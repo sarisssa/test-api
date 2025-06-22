@@ -1,0 +1,85 @@
+
+
+name: Fastify Backend CI/CD
+
+on:
+  push:
+    branches:
+      - main 
+  pull_request:
+    branches:
+      - main
+
+env:
+  AWS_REGION: us-west-1 
+  ECR_REPOSITORY: wage-backend-api 
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest 
+
+    permissions:
+      id-token: write 
+      contents: read  
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4 
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }} 
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }} 
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm' 
+
+      - name: Get npm cache directory
+        id: npm-cache-dir
+        run: echo "dir=$(npm config get cache)" >> $GITHUB_OUTPUT
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        id: npm-cache 
+        with:
+          path: ${{ steps.npm-cache-dir.outputs.dir }} 
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+     
+
+      - name: Install dependencies
+        run: npm ci 
+
+      - name: Linting
+    
+
+      - name: Extract package version
+        id: get-version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "PACKAGE_VERSION=$VERSION" >> $GITHUB_OUTPUT
+        # Only run this step if package.json exists and we are on the main branch for a push
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3 # Sets up Docker Buildx for advanced Docker features
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ env.DOCKER_BUILD_CONTEXT || '.' }} 
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }} 
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.run_id }} # CI/CD pipeline run ID
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} # Commit hash
+            ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.get-version.outputs.PACKAGE_VERSION != '' && format('{0}/{1}:{2}', steps.login-ecr.outputs.registry, env.ECR_REPOSITORY, steps.get-version.outputs.PACKAGE_VERSION) || '' }} # Semantic version (only on main push if extracted)
+            ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && format('{0}/{1}:{2}', steps.login-ecr.outputs.registry, env.ECR_REPOSITORY, 'latest') || '' }} # 'latest' tag (only on main push)
+ 

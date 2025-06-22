@@ -1,0 +1,15 @@
+{
+  "dependencies": {
+    "fastify": "^4.26.2"
+  },
+  "type": "module",
+  "scripts": {
+    "start": "node dist/main.js",
+    "build": "tsc",
+    "dev": "tsc -w & node --watch dist/main.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "typescript": "^5.3.3"
+  }
+}
