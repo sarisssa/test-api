@@ -1,4 +1,6 @@
 {
+  "name": "test-api",
+  "version": "0.1.0",
   "dependencies": {
     "fastify": "^4.26.2"
   },

@@ -61,7 +61,6 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           echo "PACKAGE_VERSION=$VERSION" >> $GITHUB_OUTPUT
-        # Only run this step if package.json exists and we are on the main branch for a push
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
       - name: Set up Docker Buildx
@@ -73,8 +72,8 @@ jobs:
           context: ${{ env.DOCKER_BUILD_CONTEXT || '.' }} 
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }} 
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.run_id }} # CI/CD pipeline run ID
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} # Commit hash
-            ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.get-version.outputs.PACKAGE_VERSION != '' && format('{0}/{1}:{2}', steps.login-ecr.outputs.registry, env.ECR_REPOSITORY, steps.get-version.outputs.PACKAGE_VERSION) || '' }} # Semantic version (only on main push if extracted)
-            ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && format('{0}/{1}:{2}', steps.login-ecr.outputs.registry, env.ECR_REPOSITORY, 'latest') || '' }} # 'latest' tag (only on main push)
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.run_id }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.get-version.outputs.PACKAGE_VERSION != '' && format('{0}/{1}:{2}', steps.login-ecr.outputs.registry, env.ECR_REPOSITORY, steps.get-version.outputs.PACKAGE_VERSION) || '' }}
+            ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && format('{0}/{1}:{2}', steps.login-ecr.outputs.registry, env.ECR_REPOSITORY, 'latest') || '' }}
  
