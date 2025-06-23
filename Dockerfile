@@ -16,9 +16,6 @@ RUN npm run build
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-# Create a non-root user for better security
-RUN addgroup -S nodejs && adduser -S nodejs -G nodejs
-
 # Copy package files and install ONLY production dependencies
 COPY package*.json ./
 RUN npm ci --only=production --omit=dev
