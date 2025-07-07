@@ -12,15 +12,27 @@ on:
 
 env:
   AWS_REGION: us-west-1 
-  ECR_REPOSITORY: wage-backend-api 
+  ECR_REPOSITORY: wage-backend-api-prd 
+  ECS_CLUSTER_NAME: wage-backend-cluster-prd 
+  ECS_TASK_DEFINITION_FAMILY: wage-backend-task-family-prd
+  ECS_SERVICE_NAME: wage-backend-service-prd
+  ECS_CONTAINER_NAME: wage-backend-api
+  WORKING_DIRECTORY: apps/test-api
 
 jobs:
-  build-and-push:
+  build-and-deploy:
     runs-on: ubuntu-latest 
 
     permissions:
       id-token: write 
       contents: read  
+
+    env:
+      isMain: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIRECTORY }}
 
     steps:
       - name: Checkout repository
@@ -41,7 +53,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm' 
+          cache: 'npm'
+          cache-dependency-path: ${{ env.WORKING_DIRECTORY }}/package-lock.json
 
       - name: Get npm cache directory
         id: npm-cache-dir
@@ -52,7 +65,7 @@ jobs:
         id: npm-cache 
         with:
           path: ${{ steps.npm-cache-dir.outputs.dir }} 
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          key: ${{ runner.os }}-npm-${{ hashFiles('apps/test-api/package-lock.json') }}
      
       - name: Install dependencies
         run: npm ci 
@@ -60,25 +73,45 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
-      - name: Extract package version
-        id: get-version
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "PACKAGE_VERSION=$VERSION" >> $GITHUB_OUTPUT
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3 
 
-      - name: Build and push Docker image
+      - name: Build and push Docker image to ECR
         uses: docker/build-push-action@v5
         with:
-          context: ${{ env.DOCKER_BUILD_CONTEXT || '.' }} 
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }} 
+          context: ${{ env.WORKING_DIRECTORY }}
+          push: ${{ env.isMain }} 
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.run_id }}
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-            ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.get-version.outputs.PACKAGE_VERSION != '' && format('{0}/{1}:{2}', steps.login-ecr.outputs.registry, env.ECR_REPOSITORY, steps.get-version.outputs.PACKAGE_VERSION) || '' }}
-            ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && format('{0}/{1}:{2}', steps.login-ecr.outputs.registry, env.ECR_REPOSITORY, 'latest') || '' }}
- 
+            ${{ env.isMain && format('{0}/{1}:{2}', steps.login-ecr.outputs.registry, env.ECR_REPOSITORY, 'latest') || '' }}
 
+      # Run terraform apply for dev/prd depending on PR or main (dont forget the yes flag)
+
+      # For Merge to PR, deploy to ECS dev environment
+
+      - name: Download Task Definition
+        if: env.isMain == 'true'
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ env.ECS_TASK_DEFINITION_FAMILY }} \
+            --query taskDefinition > task-definition.json
+
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        if: env.isMain == 'true'
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ env.ECS_CONTAINER_NAME }}
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+
+      - name: Deploy to Amazon ECS
+        if: env.isMain == 'true'
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE_NAME }}
+          cluster: ${{ env.ECS_CLUSTER_NAME }}
+          wait-for-service-stability: true
+ 

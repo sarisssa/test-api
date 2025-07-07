@@ -1,0 +1,30 @@
+
+Pass TF S3 Bucket META DATA into Pipeline to determine if any state changes needed
+
+CI/CD should do Terraform Plan + Apply
+
+2. Task Definition Health Check
+
+3. Create and Obtain Cert after domain is obtained
+
+Fargate Cost Optimization
+
+Hit the ALB URL, make sure public 
+
+HTTPS:
+ALB DNS name only supports HTTP by default
+For HTTPS, you'll need an SSL certificate
+When you get your domain, use AWS Certificate Manager (ACM)
+
+CORS:
+Ensure your ECS tasks' CORS configuration allows the ALB DNS name
+Update CORS when you add your domain later
+
+
+Get your domain name first
+Request a certificate in ACM for your domain
+Validate the certificate (usually through DNS validation)
+Once validated, you'll get the certificate ARN
+For now, since you don't have a certificate yet, I recommend:
+Either comment out the HTTPS listener temporarily
+Or modify the HTTP listener to forward traffic instead of redirecting to HTTPS

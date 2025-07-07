@@ -1,0 +1,72 @@
+Fargate Deployment Steps (on push to main)
+These steps would typically reside in a dedicated deploy-to-production job in your GitHub Actions workflow, which depends on your build-and-lint job.
+
+Configure AWS Credentials for Deployment:
+
+Action: Use aws-actions/configure-aws-credentials@v4.
+
+Purpose: Grant the GitHub Actions runner the necessary permissions to interact with AWS ECS.
+
+Key Consideration: For production, strongly recommend using OpenID Connect (OIDC) with an IAM Role that has restricted permissions to only the required ECS actions (ecs:DescribeTaskDefinition, ecs:RegisterTaskDefinition, ecs:UpdateService, ecs:DescribeServices, ecs:Wait). Avoid static AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY for production environments.
+
+Select the Docker Image Tag for Deployment:
+
+Action: A simple run step to determine which specific ECR image tag to deploy.
+
+Purpose: Ensure you are deploying the correct, newly pushed image. For a push to main, this will typically be the latest tag (which your previous job pushed) or the specific github.sha tag if you prefer immutable deployments.
+
+Output: This step should output the full ECR image URI (e.g., 123456789012.dkr.ecr.us-west-1.amazonaws.com/wage-backend-api:latest).
+
+Retrieve Current ECS Task Definition:
+
+Action: Use the AWS CLI command aws ecs describe-task-definition.
+
+Purpose: Get the full JSON definition of the currently active Task Definition for your Fastify service. This JSON will be modified in the next step.
+
+Input: The ECS_TASK_DEFINITION_FAMILY for your service (e.g., fastify-backend-prod).
+
+Output: The JSON content of the current Task Definition.
+
+Create New ECS Task Definition Revision with Updated Image:
+
+Action: A run step involving jq and aws ecs register-task-definition.
+
+Purpose: This is the core update. You take the JSON from the previous step, use jq to update the image field of your Fastify container with the newly selected Docker image URI, and then register this modified JSON as a new revision of your Task Definition.
+
+Inputs:
+
+JSON of the current Task Definition (from step 3).
+
+The new Docker image URI (from step 2).
+
+Output: The ARN (Amazon Resource Name) of the newly registered Task Definition revision.
+
+Update ECS Service to Use New Task Definition:
+
+Action: Use the AWS CLI command aws ecs update-service.
+
+Purpose: Tell your ECS Fargate Service to stop using the old Task Definition revision and start using the newly registered one. ECS will then orchestrate a new deployment, replacing old running tasks with new ones that pull the updated image.
+
+Inputs:
+
+Your ECS_CLUSTER_NAME.
+
+Your ECS_SERVICE_NAME.
+
+The ARN of the new Task Definition revision (from step 4).
+
+Key Flag: Include --force-new-deployment to ensure ECS triggers a new rollout even if other parameters (like environment variables) haven't changed in the Task Definition.
+
+Wait for ECS Service Deployment to Complete (Optional but Highly Recommended):
+
+Action: Use the AWS CLI command aws ecs wait services-stable.
+
+Purpose: Pause the workflow execution until ECS reports that your service deployment has successfully completed and all new tasks are healthy and running. This prevents the workflow from marking itself "success" before your application is actually live and stable.
+
+Inputs: Your ECS_CLUSTER_NAME and ECS_SERVICE_NAME.
+
+Confirm Deployment Success:
+
+Action: A simple echo message.
+
+Purpose: Provide clear confirmation in the workflow logs that the deployment process has finished.
