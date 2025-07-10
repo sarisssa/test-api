@@ -75,6 +75,27 @@ resource "aws_iam_role_policy" "ecs_task_s3_policy" {
   })
 }
 
+resource "aws_iam_role_policy" "ecs_task_exec_policy" {
+  name = "${var.project_name}-ecs-task-exec-policy-${var.environment}"
+  role = aws_iam_role.ecs_task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "ssmmessages:CreateControlChannel",
+          "ssmmessages:CreateDataChannel",
+          "ssmmessages:OpenControlChannel",
+          "ssmmessages:OpenDataChannel"
+        ],
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # resource "aws_iam_role_policy" "ecs_task_secrets_policy" {
 #   name = "${var.project_name}-ecs-task-secrets-policy-${var.environment}"
 #   role = aws_iam_role.ecs_task_role.id
@@ -322,6 +343,8 @@ resource "aws_ecs_service" "backend_service" {
   launch_type                       = "FARGATE"
   scheduling_strategy               = "REPLICA"
   health_check_grace_period_seconds = 60
+  enable_execute_command = true
+
 
   lifecycle {
     ignore_changes = [desired_count]
