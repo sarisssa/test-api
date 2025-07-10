@@ -299,7 +299,7 @@ resource "aws_ecs_task_definition" "backend_task" {
         }
       ]
       healthCheck = {
-        command = ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
+        command = ["CMD-SHELL", "curl -v -f http://localhost:3000/health || (echo 'Health check failed: ' && curl -v http://localhost:3000/health) && exit 1"]
         interval = 30
         timeout = 5
         retries = 3
