@@ -75,23 +75,23 @@ resource "aws_iam_role_policy" "ecs_task_s3_policy" {
   })
 }
 
-resource "aws_iam_role_policy" "ecs_task_secrets_policy" {
-  name = "${var.project_name}-ecs-task-secrets-policy-${var.environment}"
-  role = aws_iam_role.ecs_task_role.id
+# resource "aws_iam_role_policy" "ecs_task_secrets_policy" {
+#   name = "${var.project_name}-ecs-task-secrets-policy-${var.environment}"
+#   role = aws_iam_role.ecs_task_role.id
 
-  policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Effect = "Allow",
-        Action = [
-          "secretsmanager:GetSecretValue"
-        ],
-        Resource = [for secret in aws_secretsmanager_secret.app_config : secret.arn]
-      }
-    ]
-  })
-}
+#   policy = jsonencode({
+#     Version = "2012-10-17",
+#     Statement = [
+#       {
+#         Effect = "Allow",
+#         Action = [
+#           "secretsmanager:GetSecretValue"
+#         ],
+#         Resource = [for secret in aws_secretsmanager_secret.app_config : secret.arn]
+#       }
+#     ]
+#   })
+# }
 
 # --- Logging Configuration ---
 resource "aws_cloudwatch_log_group" "backend_log_group" {
