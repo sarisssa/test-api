@@ -75,23 +75,23 @@ resource "aws_iam_role_policy" "ecs_task_s3_policy" {
   })
 }
 
-# resource "aws_iam_role_policy" "ecs_task_secrets_policy" {
-#   name = "${var.project_name}-ecs-task-secrets-policy-${var.environment}"
-#   role = aws_iam_role.ecs_task_role.id
+resource "aws_iam_role_policy" "ecs_task_secrets_policy" {
+  name = "${var.project_name}-ecs-task-secrets-policy-${var.environment}"
+  role = aws_iam_role.ecs_task_role.id
 
-#   policy = jsonencode({
-#     Version = "2012-10-17",
-#     Statement = [
-#       {
-#         Effect = "Allow",
-#         Action = [
-#           "secretsmanager:GetSecretValue"
-#         ],
-#         Resource = [for secret in aws_secretsmanager_secret.app_config : secret.arn]
-#       }
-#     ]
-#   })
-# }
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ],
+        Resource = [for secret in aws_secretsmanager_secret.app_config : secret.arn]
+      }
+    ]
+  })
+}
 
 # --- Logging Configuration ---
 resource "aws_cloudwatch_log_group" "backend_log_group" {
@@ -197,7 +197,6 @@ resource "aws_lb_target_group" "backend_tg" {
 
   tags = {
     Name = "${var.project_name}-backend-tg-${var.environment}"
-
   }
 }
 
@@ -206,7 +205,7 @@ resource "aws_lb_listener" "backend_http_listener" {
   port              = "80"
   protocol          = "HTTP"
 
-  default_action {
+    default_action {
     type = "redirect"
     redirect {
       port        = "443"
@@ -227,7 +226,7 @@ resource "aws_lb_listener" "backend_https_listener" {
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-Res-2021-06"
   certificate_arn   = aws_acm_certificate.api_cert.arn
 
-  default_action {
+    default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.backend_tg.arn
   }
@@ -236,7 +235,7 @@ resource "aws_lb_listener" "backend_https_listener" {
     Name = "${var.project_name}-backend-https-listener-${var.environment}"
   }
 
-    depends_on = [
+  depends_on = [
     aws_acm_certificate_validation.cert_validation
   ]
 }
@@ -299,6 +298,13 @@ resource "aws_ecs_task_definition" "backend_task" {
           value = "3000"
         }
       ]
+      healthCheck = {
+        command = ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
+        interval = 30
+        timeout = 5
+        retries = 3
+        startPeriod = 60
+      }
     }
   ])
 
@@ -332,6 +338,14 @@ resource "aws_ecs_service" "backend_service" {
     container_name   = "${var.project_name}-backend-api"
     container_port   = 3000
   }
+
+   deployment_circuit_breaker {
+    enable   = true
+    rollback = true 
+  }
+
+  deployment_maximum_percent         = 200
+  deployment_minimum_healthy_percent = 100
 
   tags = {
     Name    = "${var.project_name}-backend-service-${var.environment}"

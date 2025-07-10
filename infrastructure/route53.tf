@@ -4,8 +4,7 @@ data "aws_route53_zone" "main" {
 }
 
 resource "aws_acm_certificate" "api_cert" {
-  domain_name               = var.domain_name
-  subject_alternative_names = ["api.${var.domain_name}"]
+  domain_name               = var.environment == "prd" ? "api.${var.domain_name}" : "dev-api.${var.domain_name}"
   validation_method         = "DNS"
 
   tags = {
@@ -39,10 +38,9 @@ resource "aws_acm_certificate_validation" "cert_validation" {
   validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
 }
 
-
 resource "aws_route53_record" "api" {
   zone_id = data.aws_route53_zone.main.zone_id
-  name    = "api.${var.domain_name}"
+  name    = "${var.environment == "prd" ? "api" : "dev-api"}.${var.domain_name}"
   type    = "A"
 
   alias {

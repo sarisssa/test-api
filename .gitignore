@@ -1,3 +1,5 @@
+node_modules
+
 # Ignore Terraform state files
 *.tfstate
 *.tfstate.*
@@ -14,4 +16,3 @@ crash.log
 
 # Ignore Infracost directory
 .infracost/
-

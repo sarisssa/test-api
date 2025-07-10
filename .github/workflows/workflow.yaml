@@ -1,34 +1,28 @@
 name: Fastify Backend CI/CD
 
 on:
-  workflow_dispatch:  
+  workflow_dispatch:
   push:
     branches:
       - main
-      - dev
   pull_request:
     branches:
       - main
 
 env:
-  AWS_REGION: us-west-1 
-  ECR_REPOSITORY: wage-backend-api-prd 
-  ECS_CLUSTER_NAME: wage-backend-cluster-prd 
-  ECS_TASK_DEFINITION_FAMILY: wage-backend-task-family-prd
-  ECS_SERVICE_NAME: wage-backend-service-prd
-  ECS_CONTAINER_NAME: wage-backend-api
+  AWS_REGION: us-west-1
+  ECR_REPOSITORY: wage-backend-api-prd
   WORKING_DIRECTORY: apps/test-api
+  ECS_CONTAINER_NAME: wage-backend-api
+  ENV_NAME: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && 'prd') || 'dev' }}
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest 
+    runs-on: ubuntu-latest
 
     permissions:
-      id-token: write 
-      contents: read  
-
-    env:
-      isMain: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      id-token: write
+      contents: read
 
     defaults:
       run:
@@ -36,7 +30,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4 
+        uses: actions/checkout@v4
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -62,56 +56,67 @@ jobs:
 
       - name: Cache node modules
         uses: actions/cache@v4
-        id: npm-cache 
+        id: npm-cache
         with:
-          path: ${{ steps.npm-cache-dir.outputs.dir }} 
+          path: ${{ steps.npm-cache-dir.outputs.dir }}
           key: ${{ runner.os }}-npm-${{ hashFiles('apps/test-api/package-lock.json') }}
-     
+
       - name: Install dependencies
-        run: npm ci 
-      
+        run: npm ci
+
+      - name: Run npm audit (fail only on critical vulnerabilities)
+        run: npm audit --audit-level=critical
+
       - name: Run ESLint
         run: npm run lint
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3 
+        uses: docker/setup-buildx-action@v3
+
+      - name: Generate Image Tags
+        id: tags
+        run: |
+          echo "timestamp=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
+          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image to ECR
         uses: docker/build-push-action@v5
         with:
           context: ${{ env.WORKING_DIRECTORY }}
-          push: ${{ env.isMain }} 
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.run_id }}
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-            ${{ env.isMain && format('{0}/{1}:{2}', steps.login-ecr.outputs.registry, env.ECR_REPOSITORY, 'latest') || '' }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tags.outputs.timestamp }}-${{ steps.tags.outputs.sha_short }}
+            ${{ env.ENV_NAME == 'prd' && format('{0}/{1}:{2}', steps.login-ecr.outputs.registry, env.ECR_REPOSITORY, 'latest') || '' }}
 
-      # Run terraform apply for dev/prd depending on PR or main (dont forget the yes flag)
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
 
-      # For Merge to PR, deploy to ECS dev environment
+      - name: Terraform Init and Apply
+        working-directory: infrastructure
+        run: |
+          terraform init
+          terraform apply -var-file=environments/${{ env.ENV_NAME }}.tfvars -auto-approve
 
       - name: Download Task Definition
-        if: env.isMain == 'true'
         run: |
           aws ecs describe-task-definition \
-            --task-definition ${{ env.ECS_TASK_DEFINITION_FAMILY }} \
+            --task-definition wage-backend-task-family-${{ env.ENV_NAME }} \
             --query taskDefinition > ./task-definition.json
 
       - name: Fill in the new image ID in the Amazon ECS task definition
-        if: env.isMain == 'true'
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition: ${{ env.WORKING_DIRECTORY }}/task-definition.json
           container-name: ${{ env.ECS_CONTAINER_NAME }}
-          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tags.outputs.timestamp }}-${{ steps.tags.outputs.sha_short }}
 
       - name: Deploy to Amazon ECS
-        if: env.isMain == 'true'
+        id: deploy
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ env.ECS_SERVICE_NAME }}
-          cluster: ${{ env.ECS_CLUSTER_NAME }}
+          service: wage-backend-service-${{ env.ENV_NAME }}
+          cluster: wage-backend-cluster-${{ env.ENV_NAME }}
           wait-for-service-stability: true
- 
+          wait-for-minutes: 10
