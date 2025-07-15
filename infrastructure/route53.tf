@@ -1,11 +1,11 @@
 data "aws_route53_zone" "main" {
-  name = var.domain_name
+  name    = var.domain_name
   zone_id = var.domain_zone_id
 }
 
 resource "aws_acm_certificate" "api_cert" {
-  domain_name               = var.environment == "prd" ? "api.${var.domain_name}" : "dev-api.${var.domain_name}"
-  validation_method         = "DNS"
+  domain_name       = var.environment == "prd" ? "api.${var.domain_name}" : "dev-api.${var.domain_name}"
+  validation_method = "DNS"
 
   tags = {
     Name = "${var.project_name}-cert-${var.environment}"

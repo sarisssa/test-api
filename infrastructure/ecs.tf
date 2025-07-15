@@ -226,7 +226,7 @@ resource "aws_lb_listener" "backend_http_listener" {
   port              = "80"
   protocol          = "HTTP"
 
-    default_action {
+  default_action {
     type = "redirect"
     redirect {
       port        = "443"
@@ -247,7 +247,7 @@ resource "aws_lb_listener" "backend_https_listener" {
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-Res-2021-06"
   certificate_arn   = aws_acm_certificate.api_cert.arn
 
-    default_action {
+  default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.backend_tg.arn
   }
@@ -320,10 +320,10 @@ resource "aws_ecs_task_definition" "backend_task" {
         }
       ]
       healthCheck = {
-        command = ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
-        interval = 30
-        timeout = 5
-        retries = 3
+        command     = ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
+        interval    = 30
+        timeout     = 5
+        retries     = 3
         startPeriod = 60
       }
     }
@@ -343,7 +343,7 @@ resource "aws_ecs_service" "backend_service" {
   launch_type                       = "FARGATE"
   scheduling_strategy               = "REPLICA"
   health_check_grace_period_seconds = 60
-  enable_execute_command = true
+  enable_execute_command            = true
 
 
   lifecycle {
@@ -362,9 +362,9 @@ resource "aws_ecs_service" "backend_service" {
     container_port   = 3000
   }
 
-   deployment_circuit_breaker {
+  deployment_circuit_breaker {
     enable   = true
-    rollback = true 
+    rollback = true
   }
 
   deployment_maximum_percent         = 200

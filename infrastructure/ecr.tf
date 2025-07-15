@@ -1,6 +1,5 @@
 resource "aws_ecr_repository" "backend_api_repo" {
-  #Remove prd from ecr_repository
-  name                 = "${var.project_name}-backend-api-${var.environment}"
+  name                 = "${var.project_name}-backend-ecr"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {

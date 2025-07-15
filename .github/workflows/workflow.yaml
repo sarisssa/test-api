@@ -11,7 +11,7 @@ on:
 
 env:
   AWS_REGION: us-west-1
-  ECR_REPOSITORY: wage-backend-api-prd
+  ECR_REPOSITORY: wage-backend-ecr
   WORKING_DIRECTORY: apps/test-api
   ECS_CONTAINER_NAME: wage-backend-api
   ENV_NAME: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && 'prd') || 'dev' }}
@@ -112,6 +112,7 @@ jobs:
           container-name: ${{ env.ECS_CONTAINER_NAME }}
           image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tags.outputs.timestamp }}-${{ steps.tags.outputs.sha_short }}
 
+      #TODO: Ensure that if task health check fails, DO NOT DEPLOY
       - name: Deploy to Amazon ECS
         id: deploy
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
