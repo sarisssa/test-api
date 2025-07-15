@@ -9,6 +9,7 @@ import { envSchema, type Env } from './config/env.js';
 import assetRoutes from './routes/asset.js';
 import authRoutes from './routes/auth.js';
 import matchmakingRoutes from './routes/matchmaking.js';
+import { startMatchmakingWorker } from './services/matchmaking-worker.js';
 import { initMatchmaking } from './services/matchmaking.js';
 import { initApiGatewayManagementClient } from './services/websocket.js';
 
@@ -40,6 +41,7 @@ async function buildApp(): Promise<FastifyInstance> {
   });
 
   await initApiGatewayManagementClient(fastify);
+  await startMatchmakingWorker(fastify);
   await initMatchmaking(fastify);
   await fastify.register(fastifyWebsocket);
 
