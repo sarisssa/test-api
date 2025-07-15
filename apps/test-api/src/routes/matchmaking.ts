@@ -42,23 +42,13 @@ export default async function matchmakingRoutes(fastify: FastifyInstance) {
                 });
 
                 try {
-                  //TODO: Fold into service layer
-                  await fastify.redis.hset(`player:${data.userId}`, {
-                    connectionId,
-                    status: 'matchmaking',
-                    joinedAt: Date.now(),
-                  });
-
-                  await fastify.redis.hset(`connection:${connectionId}`, {
-                    userId: data.userId,
-                  });
-
-                  const success = await joinMatchmakingWithSession(
+                  const playerAddedToQueue = await joinMatchmakingWithSession(
                     fastify,
-                    data.userId
+                    data.userId,
+                    connectionId
                   );
                   fastify.log.info({
-                    success,
+                    playerAddedToQueue,
                     userId: data.userId,
                     connectionId,
                     msg: 'Join matchmaking result',
@@ -66,8 +56,8 @@ export default async function matchmakingRoutes(fastify: FastifyInstance) {
                   connection.socket.send(
                     JSON.stringify({
                       type: 'joined_queue',
-                      success,
-                      message: success
+                      playerAddedToQueue,
+                      message: playerAddedToQueue
                         ? `user ${data.userId} joined matchmaking queue.`
                         : 'Failed to join queue',
                     })
@@ -127,21 +117,18 @@ export default async function matchmakingRoutes(fastify: FastifyInstance) {
                 );
             }
           } catch (error) {
-            // Ensure full error details are logged as metadata
             if (error instanceof Error) {
               fastify.log.error(
                 {
-                  error: error, // Log the error object itself
+                  error: error,
                   message: error.message,
                   stack: error.stack,
                   connectionId: connectionId,
-                  // Optionally, if `data` parsing failed, it might be undefined, so check
                   inputMessage: message.toString(),
                 },
                 'Error handling WebSocket message'
               );
             } else {
-              // Handle cases where 'error' might not be an instance of Error
               fastify.log.error(
                 {
                   error: error,
@@ -162,7 +149,6 @@ export default async function matchmakingRoutes(fastify: FastifyInstance) {
         });
 
         connection.socket.on('error', error => {
-          // Log WebSocket error with connectionId and full error object
           fastify.log.error(
             { error: error, connectionId: connectionId },
             'WebSocket error'
