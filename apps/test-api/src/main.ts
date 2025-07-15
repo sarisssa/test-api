@@ -1,21 +1,81 @@
-import Fastify from 'fastify';
+import auth from '@fastify/auth';
+import cors from '@fastify/cors';
+import fastifyEnv from '@fastify/env';
+import jwt from '@fastify/jwt';
+import redis from '@fastify/redis';
+import fastifyWebsocket from '@fastify/websocket';
+import Fastify, { FastifyInstance } from 'fastify';
+import { envSchema, type Env } from './config/env.js';
+import assetRoutes from './routes/asset.js';
+import authRoutes from './routes/auth.js';
+import matchmakingRoutes from './routes/matchmaking.js';
+import { initMatchmaking } from './services/matchmaking.js';
+import { initApiGatewayManagementClient } from './services/websocket.js';
 
-const fastify = Fastify({
-  logger: true,
-});
+declare module 'fastify' {
+  interface FastifyInstance {
+    config: Env;
+  }
+}
 
-fastify.get('/', function (request, reply) {
-  reply.send({ hello: 'world' });
-});
+async function buildApp(): Promise<FastifyInstance> {
+  const fastify = Fastify({
+    logger: true,
+  });
 
-fastify.get('/health', function (request, reply) {
-  const uptimeInSeconds = process.uptime();
-  reply.send({ status: 'ok', uptime: `${uptimeInSeconds.toFixed(2)} seconds` });
-});
+  await fastify.register(fastifyEnv, {
+    schema: envSchema,
+    dotenv: true,
+  });
 
-fastify.listen({ port: 3000, host: '0.0.0.0' }, function (err) {
-  if (err) {
-    fastify.log.error(err);
+  await fastify.register(cors);
+  await fastify.register(jwt, {
+    secret: fastify.config.JWT_SECRET,
+  });
+  await fastify.register(auth);
+
+  await fastify.register(redis, {
+    url: fastify.config.REDIS_URL,
+    closeClient: true,
+  });
+
+  await initApiGatewayManagementClient(fastify);
+  await initMatchmaking(fastify);
+  await fastify.register(fastifyWebsocket);
+
+  fastify.get('/health', async () => {
+    const uptimeInSeconds = process.uptime();
+    const redisStatus = fastify.redis.status || 'unknown';
+
+    return {
+      status: 'ok',
+      uptime: `${uptimeInSeconds.toFixed(2)} seconds`,
+      redis: {
+        status: redisStatus,
+        url: fastify.config.REDIS_URL,
+        connected: fastify.redis.connected,
+      },
+    };
+  });
+
+  await fastify.register(matchmakingRoutes, { prefix: '/matchmaking' });
+  await fastify.register(assetRoutes, { prefix: '/assets' });
+  await fastify.register(authRoutes, { prefix: '/auth' });
+
+  return fastify;
+}
+
+const start = async () => {
+  try {
+    const fastify = await buildApp();
+    await fastify.listen({
+      port: fastify.config.PORT,
+      host: fastify.config.HOST,
+    });
+  } catch (err) {
+    console.error(err);
     process.exit(1);
   }
-});
+};
+
+start();
