@@ -1,7 +1,11 @@
 import { SocketStream } from '@fastify/websocket';
 import { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
-import { joinMatchmakingWithSession } from '../services/matchmaking.js';
+import {
+  addConnection,
+  joinMatchmakingWithSession,
+  removeConnection,
+} from '../services/matchmaking.js';
 
 export default async function matchmakingRoutes(fastify: FastifyInstance) {
   fastify.register(async function (fastify) {
@@ -14,6 +18,9 @@ export default async function matchmakingRoutes(fastify: FastifyInstance) {
         const connectionId = uuidv4();
 
         (connection.socket as any).id = connectionId; // Use 'as any' or proper type augmentation
+
+        // Register the connection in the local Fastify instance
+        addConnection(connectionId, connection.socket as any);
 
         fastify.log.info(
           { connectionId: connectionId },
@@ -157,6 +164,10 @@ export default async function matchmakingRoutes(fastify: FastifyInstance) {
 
         connection.socket.on('close', async () => {
           const currentConnectionId = (connection.socket as any).id; // Retrieve the ID
+
+          // Remove the connection from the local map on socket close
+          removeConnection(currentConnectionId);
+
           fastify.log.info(
             { connectionId: currentConnectionId },
             `Client disconnected from matchmaking`

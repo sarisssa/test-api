@@ -49,6 +49,10 @@ export const startMatchmakingWorker = async (fastify: FastifyInstance) => {
     }
   };
 
+  // Register shutdown handler
+  // process.on('SIGTERM', shutdown);
+  // process.on('SIGINT', shutdown);
+
   // Start the worker loop
   processJobs(fastify);
 };
@@ -155,7 +159,6 @@ const handlePlayerCancelled = async (
 
 const attemptMatchmaking = async (fastify: FastifyInstance) => {
   try {
-    // Get oldest players in queue
     const players = await fastify.redis.zrange(
       MATCHMAKING_PLAYER_QUEUE_ZSET,
       0,
@@ -163,8 +166,8 @@ const attemptMatchmaking = async (fastify: FastifyInstance) => {
       'WITHSCORES'
     );
 
+    // 2 players + 2 scores
     if (players.length >= 4) {
-      // 2 players + 2 scores
       const player1Id = players[0];
       const player2Id = players[2];
 
