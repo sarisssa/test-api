@@ -9,6 +9,7 @@ import { envSchema, type Env } from './config/env.js';
 import dynamodbPlugin from './plugins/dynamodb.js';
 import assetRoutes from './routes/asset.js';
 import authRoutes from './routes/auth.js';
+import healthRoutes from './routes/health.js';
 import matchmakingRoutes from './routes/matchmaking.js';
 import { startMatchmakingWorker } from './services/matchmaking-worker.js';
 import { initMatchmaking } from './services/matchmaking.js';
@@ -47,21 +48,7 @@ async function buildApp(): Promise<FastifyInstance> {
   await initMatchmaking(fastify);
   await fastify.register(fastifyWebsocket);
 
-  fastify.get('/health', async () => {
-    const uptimeInSeconds = process.uptime();
-    const redisStatus = fastify.redis.status || 'unknown';
-
-    return {
-      status: 'ok',
-      uptime: `${uptimeInSeconds.toFixed(2)} seconds`,
-      redis: {
-        status: redisStatus,
-        url: fastify.config.REDIS_URL,
-        connected: fastify.redis.connected,
-      },
-    };
-  });
-
+  await fastify.register(healthRoutes);
   await fastify.register(matchmakingRoutes, { prefix: '/matchmaking' });
   await fastify.register(assetRoutes, { prefix: '/assets' });
   await fastify.register(authRoutes, { prefix: '/auth' });
