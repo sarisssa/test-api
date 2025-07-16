@@ -6,6 +6,7 @@ import redis from '@fastify/redis';
 import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { FastifyInstance } from 'fastify';
 import { envSchema, type Env } from './config/env.js';
+import dynamodbPlugin from './plugins/dynamodb.js';
 import assetRoutes from './routes/asset.js';
 import authRoutes from './routes/auth.js';
 import matchmakingRoutes from './routes/matchmaking.js';
@@ -38,6 +39,8 @@ async function buildApp(): Promise<FastifyInstance> {
     url: fastify.config.REDIS_URL,
     closeClient: true,
   });
+
+  await fastify.register(dynamodbPlugin);
 
   // await initApiGatewayManagementClient(fastify);
   await startMatchmakingWorker(fastify);
