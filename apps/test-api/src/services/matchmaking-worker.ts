@@ -1,22 +1,11 @@
 import { FastifyInstance } from 'fastify';
 import Redis from 'ioredis';
-
-const MATCHMAKING_JOB_QUEUE_LIST = 'matchmaking:jobs:list';
-const MATCHMAKING_PLAYER_QUEUE_ZSET = 'matchmaking:players:zset';
-const WEBSOCKET_OUTGOING_CHANNEL = 'websocket:outgoing_messages';
-
-interface MatchmakingJob {
-  userId: string;
-  timestamp: number;
-  action: 'player_joined_matchmaking' | 'player_cancelled_matchmaking';
-  attempts: number;
-}
-
-interface MatchResult {
-  matchId: string;
-  players: string[];
-  createdAt: number;
-}
+import {
+  MATCHMAKING_JOB_QUEUE_LIST,
+  MATCHMAKING_PLAYER_QUEUE_ZSET,
+  WEBSOCKET_OUTGOING_CHANNEL,
+} from '../constants.js';
+import { MatchmakingJob, MatchResult } from '../types/matchmaking';
 
 let workerRedis: Redis | null = null;
 let pubRedis: Redis | null = null;
@@ -159,7 +148,7 @@ const handlePlayerCancelled = async (
 
 const attemptMatchmaking = async (fastify: FastifyInstance) => {
   try {
-    const players = await fastify.redis.zrange(
+    const oldestPlayers = await fastify.redis.zrange(
       MATCHMAKING_PLAYER_QUEUE_ZSET,
       0,
       1,
@@ -167,9 +156,9 @@ const attemptMatchmaking = async (fastify: FastifyInstance) => {
     );
 
     // 2 players + 2 scores
-    if (players.length >= 4) {
-      const player1Id = players[0];
-      const player2Id = players[2];
+    if (oldestPlayers.length >= 4) {
+      const player1Id = oldestPlayers[0];
+      const player2Id = oldestPlayers[2];
 
       fastify.log.info({
         player1Id,

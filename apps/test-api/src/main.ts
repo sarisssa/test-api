@@ -11,7 +11,6 @@ import authRoutes from './routes/auth.js';
 import matchmakingRoutes from './routes/matchmaking.js';
 import { startMatchmakingWorker } from './services/matchmaking-worker.js';
 import { initMatchmaking } from './services/matchmaking.js';
-import { initApiGatewayManagementClient } from './services/websocket.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -40,7 +39,7 @@ async function buildApp(): Promise<FastifyInstance> {
     closeClient: true,
   });
 
-  await initApiGatewayManagementClient(fastify);
+  // await initApiGatewayManagementClient(fastify);
   await startMatchmakingWorker(fastify);
   await initMatchmaking(fastify);
   await fastify.register(fastifyWebsocket);

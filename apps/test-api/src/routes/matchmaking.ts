@@ -3,9 +3,9 @@ import { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import {
   addConnection,
-  joinMatchmakingWithSession,
   removeConnection,
-} from '../services/matchmaking.js';
+} from '../services/connection-manager.js';
+import { joinMatchmakingWithSession } from '../services/matchmaking.js';
 
 export default async function matchmakingRoutes(fastify: FastifyInstance) {
   fastify.register(async function (fastify) {
