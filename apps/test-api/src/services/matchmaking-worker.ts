@@ -6,6 +6,7 @@ import {
   WEBSOCKET_OUTGOING_CHANNEL,
 } from '../constants.js';
 import { MatchmakingJob, MatchResult } from '../types/matchmaking';
+import { createMatch } from './match.js';
 
 let workerRedis: Redis | null = null;
 let pubRedis: Redis | null = null;
@@ -166,9 +167,16 @@ const attemptMatchmaking = async (fastify: FastifyInstance) => {
         msg: 'Creating match between players',
       });
 
-      const match = await createMatch(fastify, [player1Id, player2Id]);
+      try {
+        const match = await createMatch(fastify, [player1Id, player2Id]);
 
-      if (match) {
+        for (const playerId of [player1Id, player2Id]) {
+          await fastify.redis.hset(`player:${playerId}`, {
+            status: 'matched',
+            matchId: match.matchId,
+          });
+        }
+
         // Remove matched players from queue
         await fastify.redis.zrem(
           MATCHMAKING_PLAYER_QUEUE_ZSET,
@@ -176,8 +184,19 @@ const attemptMatchmaking = async (fastify: FastifyInstance) => {
           player2Id
         );
 
-        // Notify both players
         await notifyPlayersOfMatch(fastify, match);
+
+        fastify.log.info({
+          matchId: match.matchId,
+          players: [player1Id, player2Id],
+          msg: 'Match created successfully',
+        });
+      } catch (error) {
+        fastify.log.error({
+          error: error,
+          players: [player1Id, player2Id],
+          msg: 'Error creating match - players remain in queue',
+        });
       }
     }
   } catch (error) {
@@ -188,51 +207,7 @@ const attemptMatchmaking = async (fastify: FastifyInstance) => {
   }
 };
 
-const createMatch = async (
-  fastify: FastifyInstance,
-  playerIds: string[]
-): Promise<MatchResult | null> => {
-  try {
-    const matchId = `match_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const match: MatchResult = {
-      matchId,
-      players: playerIds,
-      createdAt: Date.now(),
-    };
-
-    // Store match data
-    await fastify.redis.hset(`match:${matchId}`, {
-      players: JSON.stringify(playerIds),
-      createdAt: match.createdAt,
-      status: 'created',
-    });
-
-    // Update player statuses
-    for (const playerId of playerIds) {
-      await fastify.redis.hset(`player:${playerId}`, {
-        status: 'matched',
-        matchId: matchId,
-      });
-    }
-
-    fastify.log.info({
-      matchId,
-      players: playerIds,
-      msg: 'Match created successfully',
-    });
-
-    return match;
-  } catch (error) {
-    fastify.log.error({
-      error,
-      players: playerIds,
-      msg: 'Error creating match',
-    });
-    return null;
-  }
-};
-
-const notifyPlayersOfMatch = async (
+export const notifyPlayersOfMatch = async (
   fastify: FastifyInstance,
   match: MatchResult
 ) => {
