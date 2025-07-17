@@ -22,7 +22,9 @@
   "type": "module",
   "scripts": {
     "start": "node dist/main.js",
+    "prebuild": "rm -rf dist",
     "build": "tsc",
+    "postbuild": "cp -r src/redis-scripts dist/redis-scripts",
     "create-table": "node --loader ts-node/esm src/scripts/create-table.ts",
     "dev": "npm run create-table && npm run build && tsc -w & node --watch dist/main.js",
     "lint": "eslint src/**/*.ts"
