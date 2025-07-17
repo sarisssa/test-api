@@ -4,10 +4,12 @@ import {
   MATCHMAKING_JOB_QUEUE_LIST,
   MATCHMAKING_PLAYER_QUEUE_ZSET,
   REDIS_KEYS,
-  WEBSOCKET_OUTGOING_CHANNEL,
 } from '../constants.js';
 import { MatchmakingJob, MatchResult } from '../types/matchmaking.js';
-import { startWebSocketMessageSubscriber } from './connection-manager.js';
+import {
+  notifyPlayersOfMatch,
+  startWebSocketMessageSubscriber,
+} from './connection-manager.js';
 import { createMatch } from './match.js';
 
 let pubRedis: Redis | null = null;
@@ -244,62 +246,5 @@ export const handlePlayerCancelled = async (
       userId: jobData.userId,
       msg: 'Error handling player cancellation',
     });
-  }
-};
-
-export const notifyPlayersOfMatch = async (
-  fastify: FastifyInstance,
-  match: MatchResult
-) => {
-  if (!pubRedis) {
-    fastify.log.error('Pub Redis client not available');
-    return;
-  }
-
-  for (const playerId of match.players) {
-    try {
-      // Get player's connection ID
-      const connectionId = await fastify.redis.hget(
-        `player:${playerId}`,
-        'connectionId'
-      );
-
-      if (connectionId) {
-        const message = {
-          targetConnectionId: connectionId,
-          data: {
-            type: 'match_found',
-            matchId: match.matchId,
-            players: match.players,
-            message: `Match found! Match ID: ${match.matchId}`,
-            createdAt: match.createdAt,
-          },
-        };
-
-        await pubRedis.publish(
-          WEBSOCKET_OUTGOING_CHANNEL,
-          JSON.stringify(message)
-        );
-
-        fastify.log.info({
-          playerId,
-          connectionId,
-          matchId: match.matchId,
-          msg: 'Notified player of match',
-        });
-      } else {
-        fastify.log.warn({
-          playerId,
-          msg: 'Player connection ID not found',
-        });
-      }
-    } catch (error) {
-      fastify.log.error({
-        error,
-        playerId,
-        matchId: match.matchId,
-        msg: 'Error notifying player of match',
-      });
-    }
   }
 };
