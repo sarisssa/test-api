@@ -1,5 +1,8 @@
 import { FastifyInstance } from 'fastify';
+import { readFileSync } from 'fs';
 import Redis from 'ioredis';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import {
   MATCHMAKING_JOB_QUEUE_LIST,
   MATCHMAKING_PLAYER_QUEUE_ZSET,
@@ -11,6 +14,15 @@ import {
   startWebSocketMessageSubscriber,
 } from './connection-manager.js';
 import { createMatch } from './match.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Load the Lua script
+const findAndMatchPlayersScript = readFileSync(
+  join(__dirname, '../redis-scripts/find-and-match-players.lua'),
+  'utf-8'
+);
 
 let pubRedis: Redis | null = null;
 
@@ -56,6 +68,7 @@ export const joinMatchmakingWithSession = async (
       joinedAt: Date.now(),
     });
 
+    //TODO: Determine if this is needed
     multi.hset(REDIS_KEYS.CONNECTION(connectionId), {
       userId,
     });
@@ -136,54 +149,41 @@ export const findAndCreateMatch = async (
   fastify: FastifyInstance
 ): Promise<MatchResult | null> => {
   try {
-    const oldestPlayers = await fastify.redis.zrange(
-      MATCHMAKING_PLAYER_QUEUE_ZSET,
-      0,
-      1,
-      'WITHSCORES'
-    );
+    // Atomically find and update two oldest players via Lua script
+    const matchId = `match_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // 2 players + 2 scores = 4 elements
-    if (oldestPlayers.length >= 4) {
-      const player1Id = oldestPlayers[0];
-      const player2Id = oldestPlayers[2];
+    const players = (await fastify.redis.eval(
+      findAndMatchPlayersScript,
+      2,
+      MATCHMAKING_PLAYER_QUEUE_ZSET, // KEYS[1]
+      'player:', // KEYS[2]
+      matchId, // ARGV[1]
+      'matched' // ARGV[2]
+    )) as string[];
 
+    if (players.length === 2) {
       fastify.log.info({
-        player1Id,
-        player2Id,
+        player1Id: players[0],
+        player2Id: players[1],
         msg: 'Creating match between players',
       });
 
       try {
-        const match = await createMatch(fastify, [player1Id, player2Id]);
-
-        // Update player statuses
-        for (const playerId of [player1Id, player2Id]) {
-          await fastify.redis.hset(REDIS_KEYS.PLAYER(playerId), {
-            status: 'matched',
-            matchId: match.matchId,
-          });
-        }
-
-        // Remove matched players from queue
-        await fastify.redis.zrem(
-          MATCHMAKING_PLAYER_QUEUE_ZSET,
-          player1Id,
-          player2Id
-        );
+        const match = await createMatch(fastify, players);
 
         fastify.log.info({
           matchId: match.matchId,
-          players: [player1Id, player2Id],
+          players,
           msg: 'Match created successfully',
         });
 
         return match;
       } catch (error) {
+        // TODO: Add another Lua script for rollback operation if match creation fails
         fastify.log.error({
           error,
-          players: [player1Id, player2Id],
-          msg: 'Error creating match - players remain in queue',
+          players,
+          msg: 'Error creating match - players were removed from queue',
         });
         return null;
       }
