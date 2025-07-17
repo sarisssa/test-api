@@ -1,5 +1,6 @@
 import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { FastifyInstance } from 'fastify';
+import { REDIS_KEYS } from '../constants.js';
 import { MatchResult } from '../types/matchmaking.js';
 
 export const createMatch = async (
@@ -20,7 +21,7 @@ export const createMatch = async (
       msg: 'Attempting to write match to DynamoDB and Redis',
     });
 
-    const redisPromise = fastify.redis.hset(`match:${matchId}`, {
+    const redisPromise = fastify.redis.hset(REDIS_KEYS.MATCH(matchId), {
       players: JSON.stringify(players),
       createdAt: match.createdAt,
       status: 'created',

@@ -3,6 +3,7 @@ import Redis from 'ioredis';
 import {
   MATCHMAKING_JOB_QUEUE_LIST,
   MATCHMAKING_PLAYER_QUEUE_ZSET,
+  REDIS_KEYS,
   WEBSOCKET_OUTGOING_CHANNEL,
 } from '../constants.js';
 import { MatchmakingJob, MatchResult } from '../types/matchmaking.js';
@@ -47,13 +48,13 @@ export const joinMatchmakingWithSession = async (
     //Ensure atomicity of operations
     const multi = fastify.redis.multi();
 
-    multi.hset(`player:${userId}`, {
+    multi.hset(REDIS_KEYS.PLAYER(userId), {
       connectionId,
       status: 'matchmaking',
       joinedAt: Date.now(),
     });
 
-    multi.hset(`connection:${connectionId}`, {
+    multi.hset(REDIS_KEYS.CONNECTION(connectionId), {
       userId,
     });
 
@@ -156,7 +157,7 @@ export const findAndCreateMatch = async (
 
         // Update player statuses
         for (const playerId of [player1Id, player2Id]) {
-          await fastify.redis.hset(`player:${playerId}`, {
+          await fastify.redis.hset(REDIS_KEYS.PLAYER(playerId), {
             status: 'matched',
             matchId: match.matchId,
           });
