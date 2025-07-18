@@ -1,3 +1,4 @@
+import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
@@ -44,20 +45,54 @@ export const createUser = async (
     },
   };
 
-  await fastify.dynamodb.send(
-    new PutCommand({
-      TableName: 'WageTable',
-      Item: user,
-    })
-  );
+  try {
+    await fastify.dynamodb.send(
+      new PutCommand({
+        TableName: 'WageTable',
+        Item: user,
+        ConditionExpression: 'attribute_not_exists(PK)', // ONLY create a new user if PK does not exist
+      })
+    );
 
-  fastify.log.info({
-    userId,
-    phoneNumber,
-    msg: 'New user created',
-  });
+    fastify.log.info({
+      userId,
+      phoneNumber,
+      msg: 'New user created',
+    });
 
-  return user;
+    return user;
+  } catch (error) {
+    // If another concurrent request already created the user, ConditionalCheckFailedException is thrown
+    if (error instanceof ConditionalCheckFailedException) {
+      fastify.log.warn({
+        phoneNumber,
+        msg: 'User already exists, another concurrent request likely created it.',
+      });
+      // In this case, fetch the existing user that was just created by the other task
+      const existingUser = await findUserByPhone(fastify, phoneNumber);
+      if (existingUser) {
+        return existingUser; // Return the user that now exists
+      } else {
+        // Fallback for unexpected states or eventual consistency delays.
+        fastify.log.error({
+          phoneNumber,
+          error,
+          msg: 'ConditionalCheckFailedException but user not found immediately after. Potential consistency issue.',
+        });
+        throw new Error(
+          'Failed to create user and could not retrieve existing user.'
+        );
+      }
+    } else {
+      // Re-throw other unexpected errors
+      fastify.log.error({
+        phoneNumber,
+        error,
+        msg: 'Error creating user in DynamoDB',
+      });
+      throw error;
+    }
+  }
 };
 
 export const updateUserLastLogin = async (
