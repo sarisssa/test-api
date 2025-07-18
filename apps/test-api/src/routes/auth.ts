@@ -1,25 +1,43 @@
 import { FastifyInstance } from 'fastify';
 import { sendOtp, verifyOtp } from '../services/auth.js';
-import { SendOtpBody, VerifyOtpBody } from '../types/auth';
+import {
+  SendOtpBody,
+  sendOtpJsonSchema,
+  VerifyOtpBody,
+  verifyOtpJsonSchema,
+} from '../types/auth.js';
 
 export default async function authRoutes(fastify: FastifyInstance) {
-  fastify.post<{ Body: SendOtpBody }>('/send-otp', async (request, reply) => {
-    const { phoneNumber } = request.body;
+  fastify.post<{ Body: SendOtpBody }>(
+    '/send-otp',
+    {
+      schema: {
+        body: sendOtpJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      const { phoneNumber } = request.body;
 
-    try {
-      await sendOtp(fastify, phoneNumber);
-      reply.status(200).send({ message: 'OTP sent successfully' });
-    } catch (error) {
-      fastify.log.error({ error, msg: 'Error sending OTP' });
-      reply.status(500).send({
-        message: 'Failed to send OTP',
-        error: (error as Error).message,
-      });
+      try {
+        await sendOtp(fastify, phoneNumber);
+        reply.status(200).send({ message: 'OTP sent successfully' });
+      } catch (error) {
+        fastify.log.error({ error, msg: 'Error sending OTP' });
+        reply.status(500).send({
+          message: 'Failed to send OTP',
+          error: (error as Error).message,
+        });
+      }
     }
-  });
+  );
 
   fastify.post<{ Body: VerifyOtpBody }>(
     '/verify-otp',
+    {
+      schema: {
+        body: verifyOtpJsonSchema,
+      },
+    },
     async (request, reply) => {
       try {
         const { phoneNumber, code } = request.body;
