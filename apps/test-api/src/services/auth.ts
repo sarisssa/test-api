@@ -1,5 +1,4 @@
 import { FastifyInstance } from 'fastify';
-import twilio from 'twilio';
 import { createUser, findUserByPhone, updateUserLastLogin } from './user.js';
 
 const formatPhoneNumber = (phoneNumber: string): string => {
@@ -13,14 +12,9 @@ export const sendOtp = async (
   fastify: FastifyInstance,
   phoneNumber: string
 ) => {
-  const client = twilio(
-    fastify.config.TWILIO_ACCOUNT_SID,
-    fastify.config.TWILIO_AUTH_TOKEN
-  );
-
   phoneNumber = formatPhoneNumber(phoneNumber);
 
-  const verification = await client.verify.v2
+  const verification = await fastify.twilio.verify.v2
     .services(fastify.config.TWILIO_VERIFY_SERVICE_SID)
     .verifications.create({
       channel: 'sms',
@@ -42,14 +36,9 @@ export const verifyOtp = async (
   phoneNumber: string,
   code: string
 ) => {
-  const client = twilio(
-    fastify.config.TWILIO_ACCOUNT_SID,
-    fastify.config.TWILIO_AUTH_TOKEN
-  );
-
   phoneNumber = formatPhoneNumber(phoneNumber);
 
-  const verification = await client.verify.v2
+  const verification = await fastify.twilio.verify.v2
     .services(fastify.config.TWILIO_VERIFY_SERVICE_SID)
     .verificationChecks.create({
       to: phoneNumber,
@@ -66,7 +55,6 @@ export const verifyOtp = async (
     msg: 'OTP verified successfully',
   });
 
-  // Find or create user
   let user = await findUserByPhone(fastify, phoneNumber);
   const isNewUser = !user;
 
@@ -76,7 +64,6 @@ export const verifyOtp = async (
     await updateUserLastLogin(fastify, user);
   }
 
-  // Generate JWT
   const token = fastify.jwt.sign({
     userId: user.userId,
     phoneNumber: user.phoneNumber,
