@@ -1,3 +1,5 @@
+import { MatchPortfolios, PlayerAssetSelections } from '../types/match';
+
 export interface DynamoDBMatchItem {
   PK: `MATCH#${string}`;
   SK: 'DETAILS';
@@ -5,16 +7,29 @@ export interface DynamoDBMatchItem {
 
   matchId: string;
   players: string[];
-  status: 'created' | 'in_progress' | 'completed' | 'cancelled';
+  status:
+    | 'asset_selection'
+    | 'ready_check'
+    | 'in_progress'
+    | 'completed'
+    | 'cancelled';
   createdAt: string;
 
-  startedAt?: string;
-  endedAt?: string;
+  // --- Asset Selection Phase ---
+  assetSelectionStartedAt: string;
+  assetSelectionEndedAt?: string;
+  playerAssets: PlayerAssetSelections;
+
+  // --- Match Play Phase ---
+  matchStartedAt?: string;
+  matchEndedAt?: string;
   winner?: string;
-  gameData?: {
-    duration?: number;
-    scores?: Record<string, number>;
-  };
+
+  portfolios: MatchPortfolios;
+
+  // --- Match-Level Metadata for Price Updates ---
+  lastPriceUpdateAt?: string;
+  priceUpdateCount?: number;
 }
 
 export interface DynamoDBPlayerMatchItem {

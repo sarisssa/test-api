@@ -5,8 +5,10 @@ import {
   addConnection,
   removeConnection,
 } from '../services/connection-manager.js';
+import { handleAssetSelection } from '../services/match-actions.js';
 import { joinMatchmakingWithSession } from '../services/matchmaking.js';
 
+//TODO: Extract user id from JWT, do not pass user id into the payload!
 export default async function matchmakingRoutes(fastify: FastifyInstance) {
   fastify.register(async function (fastify) {
     fastify.get(
@@ -83,17 +85,32 @@ export default async function matchmakingRoutes(fastify: FastifyInstance) {
                 break;
               }
 
-              case 'ping': {
-                fastify.log.info(
-                  { connectionId: connectionId },
-                  'Processing ping request'
-                );
-                connection.socket.send(
-                  JSON.stringify({
-                    type: 'pong',
-                    message: 'Server is alive',
-                  })
-                );
+              case 'select_asset': {
+                const { matchId, ticker, userId } = data.payload;
+
+                try {
+                  await handleAssetSelection(fastify, userId, {
+                    matchId,
+                    ticker,
+                  });
+
+                  connection.socket.send(
+                    JSON.stringify({
+                      type: 'asset_selection_success',
+                      matchId,
+                      ticker,
+                    })
+                  );
+                } catch (error) {
+                  fastify.log.error({
+                    error,
+                    userId: data.userId,
+                    matchId,
+                    ticker,
+                    msg: 'Error handling asset selection',
+                  });
+                  throw error;
+                }
                 break;
               }
 
@@ -111,11 +128,21 @@ export default async function matchmakingRoutes(fastify: FastifyInstance) {
                 break;
               }
 
-              default:
+              case 'ping': {
                 fastify.log.info(
-                  { action: data.action, connectionId: connectionId },
-                  'Received unknown action'
+                  { connectionId: connectionId },
+                  'Processing ping request'
                 );
+                connection.socket.send(
+                  JSON.stringify({
+                    type: 'pong',
+                    message: 'Server is alive',
+                  })
+                );
+                break;
+              }
+
+              default:
                 connection.socket.send(
                   JSON.stringify({
                     type: 'error',
