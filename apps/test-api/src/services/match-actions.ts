@@ -21,12 +21,9 @@ export const handleAssetSelection = async (
 
   try {
     const matchData = await getMatch(fastify, matchId);
-    const { match, opponentId } = validateMatchAccess(matchData, userId);
+    const { match } = validateMatchAccess(matchData, userId);
 
-    const playerAssets = match.playerAssets[userId]?.assets || [];
-    const opponentAssets = match.playerAssets[opponentId]?.assets || [];
-
-    validateAssetSelection(playerAssets, opponentAssets, ticker);
+    validateAssetSelection(match, userId, ticker);
 
     await addAssetToMatch(fastify, matchId, userId, { ticker });
 

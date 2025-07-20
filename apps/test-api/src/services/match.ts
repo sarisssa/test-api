@@ -1,9 +1,14 @@
 import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { FastifyInstance } from 'fastify';
 import { REDIS_KEYS } from '../constants.js';
+import { NotEnoughAssetsError, ValidationError } from '../errors/index.js';
 import { DynamoDBMatchItem } from '../models/match.js';
 import { PlayerAsset } from '../types/match';
 import { MatchResult } from '../types/matchmaking.js';
+import {
+  validateAssetSelection,
+  validatePlayers,
+} from '../validators/match-validator.js';
 
 const ASSET_SELECTION_DURATION = 2 * 60 * 1000; // 2 minutes
 const MAX_ASSETS_PER_PLAYER = 3;
@@ -12,6 +17,8 @@ export const createMatch = async (
   fastify: FastifyInstance,
   players: string[]
 ): Promise<MatchResult> => {
+  validatePlayers(players);
+
   const matchId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const match: MatchResult = {
     matchId,
@@ -32,8 +39,11 @@ export const createMatch = async (
       status: 'asset_selection',
     });
 
-    const now = new Date().toISOString();
-
+    const nowMs = Date.now();
+    const nowIso = new Date(nowMs).toISOString();
+    const assetSelectionEndedAtIso = new Date(
+      nowMs + ASSET_SELECTION_DURATION
+    ).toISOString();
     // Initialize playerAssets structure for both players
     const playerAssets = players.reduce<
       Record<string, { assets: PlayerAsset[] }>
@@ -54,9 +64,9 @@ export const createMatch = async (
           matchId,
           players,
           status: 'asset_selection',
-          createdAt: now,
-          assetSelectionStartedAt: now,
-          assetSelectionEndedAt: now + ASSET_SELECTION_DURATION,
+          createdAt: nowIso,
+          assetSelectionStartedAt: nowIso,
+          assetSelectionEndedAt: assetSelectionEndedAtIso,
           playerAssets,
         },
       })
@@ -135,6 +145,13 @@ export const addAssetToMatch = async (
 ): Promise<void> => {
   try {
     //TODO: Add validation for ticker + check that ticker actually exists in the DB
+
+    const match = await getMatch(fastify, matchId);
+    if (!match) {
+      throw new ValidationError('Match not found');
+    }
+
+    validateAssetSelection(match, userId, asset.ticker);
 
     const newAsset: PlayerAsset = {
       ...asset,
@@ -236,6 +253,27 @@ export const updatePlayerReadyStatus = async (
   userId: string
 ): Promise<DynamoDBMatchItem> => {
   try {
+    const currentMatch = await getMatch(fastify, matchId);
+
+    if (!currentMatch) {
+      throw new Error('Match not found when attempting to ready up.');
+    }
+
+    const playerAssets = currentMatch.playerAssets?.[userId]?.assets;
+
+    if (!playerAssets || playerAssets.length < MAX_ASSETS_PER_PLAYER) {
+      fastify.log.warn({
+        matchId,
+        userId,
+        currentAssetCount: playerAssets?.length || 0,
+        requiredAssetCount: MAX_ASSETS_PER_PLAYER,
+        msg: 'Player attempted to ready up without selecting enough assets.',
+      });
+      throw new NotEnoughAssetsError(
+        `Please select ${MAX_ASSETS_PER_PLAYER} assets before marking yourself ready.`
+      );
+    }
+
     await fastify.dynamodb.send(
       new UpdateCommand({
         TableName: 'WageTable',

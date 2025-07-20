@@ -11,7 +11,7 @@ import twilioPlugin from './plugins/twilio.js';
 import assetRoutes from './routes/asset.js';
 import authRoutes from './routes/auth.js';
 import healthRoutes from './routes/health.js';
-import matchmakingRoutes from './routes/matchmaking.js';
+import matchGatewayRoutes from './routes/match-gateway.js';
 import { startMatchmakingWorker } from './services/matchmaking-worker.js';
 import { initMatchmaking } from './services/matchmaking.js';
 
@@ -51,7 +51,7 @@ async function buildApp(): Promise<FastifyInstance> {
   await initMatchmaking(fastify);
 
   await fastify.register(healthRoutes);
-  await fastify.register(matchmakingRoutes, { prefix: '/matchmaking' });
+  await fastify.register(matchGatewayRoutes, { prefix: '/match-gateway' });
   await fastify.register(assetRoutes, { prefix: '/assets' });
   await fastify.register(authRoutes, { prefix: '/auth' });
 

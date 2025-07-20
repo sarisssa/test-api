@@ -13,7 +13,8 @@ import {
 import { joinMatchmakingWithSession } from '../services/matchmaking.js';
 
 //TODO: Extract user id from JWT, do not pass user id into the payload!
-export default async function matchmakingRoutes(fastify: FastifyInstance) {
+//TODO: Eventually move to AWS API Gateway - do not leverage local Fastify websocket
+export default async function matchGatewayRoutes(fastify: FastifyInstance) {
   fastify.register(async function (fastify) {
     fastify.get(
       '/ws',

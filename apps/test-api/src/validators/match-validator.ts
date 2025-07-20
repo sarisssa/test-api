@@ -1,52 +1,87 @@
+import {
+  DuplicateAssetError,
+  IdenticalAssetSetError,
+  MatchNotFoundError,
+  MatchValidationError,
+  MaxAssetsReachedError,
+  UnauthorizedMatchAccessError,
+} from '../errors/index.js';
 import { DynamoDBMatchItem } from '../models/match.js';
 
 const MAX_ASSETS_PER_PLAYER = 3;
 
-type Asset = DynamoDBMatchItem['playerAssets'][string]['assets'][number];
+export const validatePlayers = (players: string[]): void => {
+  // Check for unique players
+  const uniquePlayers = new Set(players);
+  if (uniquePlayers.size !== players.length) {
+    throw new MatchValidationError(
+      'Players array contains duplicate player IDs'
+    );
+  }
+
+  // Check for exactly 2 players
+  if (players.length !== 2) {
+    throw new MatchValidationError('Match must have exactly 2 players');
+  }
+};
 
 export const validateMatchAccess = (
   match: DynamoDBMatchItem | undefined,
   userId: string
 ): { match: DynamoDBMatchItem; opponentId: string } => {
   if (!match) {
-    throw new Error('Match not found');
+    throw new MatchNotFoundError();
   }
 
   if (!match.players.includes(userId)) {
-    throw new Error('Not authorized for this match');
+    throw new UnauthorizedMatchAccessError();
   }
 
   const opponentId = match.players.find(id => id !== userId);
   if (!opponentId) {
-    throw new Error('Opponent not found in match players.');
+    throw new MatchValidationError('Opponent not found in match players');
   }
 
   return { match, opponentId };
 };
 
 export const validateAssetSelection = (
-  playerAssets: Asset[],
-  opponentAssets: Asset[],
+  match: DynamoDBMatchItem,
+  userId: string,
   ticker: string
 ): void => {
-  if (playerAssets.some((asset: Asset) => asset.ticker === ticker)) {
-    throw new Error('Asset already selected by you.');
+  // Validate player is in match
+  if (!match.players.includes(userId)) {
+    throw new UnauthorizedMatchAccessError();
   }
 
+  const playerAssets = match.playerAssets[userId]?.assets || [];
+  const opponentId = match.players.find(id => id !== userId);
+  if (!opponentId) {
+    throw new MatchValidationError('Opponent not found in match players');
+  }
+  const opponentAssets = match.playerAssets[opponentId]?.assets || [];
+
+  // Check for duplicate ticker
+  if (playerAssets.some(asset => asset.ticker === ticker)) {
+    throw new DuplicateAssetError();
+  }
+
+  // Check max assets
   if (playerAssets.length >= MAX_ASSETS_PER_PLAYER) {
-    throw new Error('You have already selected 3 assets.');
+    throw new MaxAssetsReachedError();
   }
 
-  // Check for 3 overlapping assets with opponent
+  // Check for identical set with opponent
   if (playerAssets.length === 2 && opponentAssets.length === 3) {
-    const opponentTickers = new Set(opponentAssets.map((a: Asset) => a.ticker));
-    const proposedSet = [...playerAssets.map((a: Asset) => a.ticker), ticker];
+    const opponentTickers = new Set(opponentAssets.map(a => a.ticker));
+    const proposedSet = [...playerAssets.map(a => a.ticker), ticker];
 
     if (
-      proposedSet.every((t: string) => opponentTickers.has(t)) &&
+      proposedSet.every(t => opponentTickers.has(t)) &&
       proposedSet.length === opponentTickers.size
     ) {
-      throw new Error('Cannot select an identical set of assets as opponent.');
+      throw new IdenticalAssetSetError();
     }
   }
 };
