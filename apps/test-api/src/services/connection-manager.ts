@@ -3,6 +3,7 @@ import Redis from 'ioredis';
 import { WebSocket } from 'ws';
 import { WEBSOCKET_OUTGOING_CHANNEL } from '../constants.js';
 import { MatchResult } from '../types/matchmaking.js';
+import { getMatch } from './match.js';
 
 // Local map to store active WebSocket connections for this specific Fargate task
 const activeConnections = new Map<string, WebSocket>();
@@ -18,7 +19,8 @@ export const addConnection = (
 ): void => {
   activeConnections.set(connectionId, socket);
   console.log(
-    `Added connection ${connectionId}. Total connections: ${activeConnections.size}`
+    `Added connection ${connectionId}. Active connections: `,
+    Array.from(activeConnections.keys())
   );
 };
 
@@ -58,6 +60,12 @@ export const startWebSocketMessageSubscriber = async (
       try {
         const messageData = JSON.parse(message);
         const { targetConnectionId, data } = messageData;
+
+        console.log('Received message for connection:', targetConnectionId);
+        console.log(
+          'Active connections:',
+          Array.from(activeConnections.keys())
+        );
 
         if (!targetConnectionId || !data) {
           fastify.log.warn({
@@ -158,6 +166,63 @@ export const notifyPlayersOfMatch = async (
         playerId,
         matchId: match.matchId,
         msg: 'Error notifying player of match',
+      });
+    }
+  }
+};
+
+export const broadcastToMatch = async (
+  fastify: FastifyInstance,
+  matchId: string,
+  data: any // Consider creating a proper type for this
+) => {
+  if (!pubRedis) {
+    fastify.log.error('Pub Redis client not available');
+    return;
+  }
+
+  const match = await getMatch(fastify, matchId);
+  if (!match) {
+    fastify.log.error({ matchId, msg: 'Match not found for broadcasting' });
+    return;
+  }
+
+  for (const playerId of match.players) {
+    try {
+      const connectionId = await fastify.redis.hget(
+        `player:${playerId}`,
+        'connectionId'
+      );
+
+      if (connectionId) {
+        const message = {
+          targetConnectionId: connectionId,
+          data,
+        };
+
+        await pubRedis.publish(
+          WEBSOCKET_OUTGOING_CHANNEL,
+          JSON.stringify(message)
+        );
+
+        fastify.log.info({
+          playerId,
+          connectionId,
+          matchId,
+          msg: 'Broadcasted match update to player',
+        });
+      } else {
+        fastify.log.warn({
+          playerId,
+          msg: 'Player connection ID not found for broadcast',
+        });
+      }
+    } catch (error) {
+      fastify.log.error({
+        error,
+        playerId,
+        matchId,
+        msg: 'Error broadcasting to player',
       });
     }
   }

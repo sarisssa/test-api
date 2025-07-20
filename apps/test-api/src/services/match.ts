@@ -5,6 +5,9 @@ import { DynamoDBMatchItem } from '../models/match.js';
 import { PlayerAsset } from '../types/match';
 import { MatchResult } from '../types/matchmaking.js';
 
+const ASSET_SELECTION_DURATION = 2 * 60 * 1000; // 2 minutes
+const MAX_ASSETS_PER_PLAYER = 3;
+
 export const createMatch = async (
   fastify: FastifyInstance,
   players: string[]
@@ -32,7 +35,9 @@ export const createMatch = async (
     const now = new Date().toISOString();
 
     // Initialize playerAssets structure for both players
-    const playerAssets = players.reduce((acc, playerId) => {
+    const playerAssets = players.reduce<
+      Record<string, { assets: PlayerAsset[] }>
+    >((acc, playerId) => {
       acc[playerId] = {
         assets: [],
       };
@@ -51,6 +56,7 @@ export const createMatch = async (
           status: 'asset_selection',
           createdAt: now,
           assetSelectionStartedAt: now,
+          assetSelectionEndedAt: now + ASSET_SELECTION_DURATION,
           playerAssets,
         },
       })
@@ -85,7 +91,7 @@ export const getMatch = async (
     fastify.log.info({
       matchId,
       msg: 'Attempting to fetch match from DynamoDB',
-      key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' }, // Log the exact key we're using
+      key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
     });
 
     const result = await fastify.dynamodb.send(
@@ -106,7 +112,7 @@ export const getMatch = async (
 
     fastify.log.info({
       matchId,
-      matchData: result.Item, // Log the full match data
+      matchData: result.Item,
       msg: 'Match found in DynamoDB',
     });
 
@@ -128,6 +134,8 @@ export const addAssetToMatch = async (
   asset: { ticker: string }
 ): Promise<void> => {
   try {
+    //TODO: Add validation for ticker + check that ticker actually exists in the DB
+
     const newAsset: PlayerAsset = {
       ...asset,
       selectedAt: new Date().toISOString(),
@@ -147,7 +155,7 @@ export const addAssetToMatch = async (
         },
         ExpressionAttributeValues: {
           ':assetStatus': 'asset_selection',
-          ':maxAssets': 3,
+          ':maxAssets': MAX_ASSETS_PER_PLAYER,
           ':newAsset': [newAsset],
         },
       })
@@ -159,11 +167,64 @@ export const addAssetToMatch = async (
       asset: asset.ticker,
       msg: 'Asset added to match successfully',
     });
+  } catch (error: unknown) {
+    if (
+      error instanceof Error &&
+      error.name === 'ConditionalCheckFailedException'
+    ) {
+      throw new Error('Cannot add asset: match status invalid');
+    }
+    throw error;
+  }
+};
+
+export const removeAssetFromMatch = async (
+  fastify: FastifyInstance,
+  matchId: string,
+  userId: string,
+  ticker: string
+): Promise<void> => {
+  try {
+    // First get the current match to find the asset index
+    const match = await getMatch(fastify, matchId);
+    if (!match) throw new Error('Match not found');
+
+    const playerAssets = match.playerAssets[userId]?.assets || [];
+    const assetIndex = playerAssets.findIndex(asset => asset.ticker === ticker);
+
+    if (assetIndex === -1) {
+      throw new Error("Asset not found in player's selection");
+    }
+
+    await fastify.dynamodb.send(
+      new UpdateCommand({
+        TableName: 'WageTable',
+        Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
+        ConditionExpression:
+          'attribute_exists(PK) AND attribute_exists(SK) AND #status = :assetStatus',
+        UpdateExpression: `REMOVE playerAssets.#userId.assets[${assetIndex}]`,
+        ExpressionAttributeNames: {
+          '#userId': userId,
+          '#status': 'status',
+        },
+        ExpressionAttributeValues: {
+          ':assetStatus': 'asset_selection',
+        },
+      })
+    );
+
+    fastify.log.info({
+      matchId,
+      userId,
+      ticker,
+      msg: 'Asset removed from match successfully',
+    });
   } catch (error) {
-    if (error.name === 'ConditionalCheckFailedException') {
-      throw new Error(
-        'Cannot add asset: match status invalid or asset limit reached'
-      );
+    if (
+      error instanceof Error &&
+      error.name === 'ConditionalCheckFailedException'
+    ) {
+      throw new Error('Cannot remove asset: match status invalid');
     }
     throw error;
   }

@@ -5,7 +5,10 @@ import {
   addConnection,
   removeConnection,
 } from '../services/connection-manager.js';
-import { handleAssetSelection } from '../services/match-actions.js';
+import {
+  handleAssetDeselection,
+  handleAssetSelection,
+} from '../services/match-actions.js';
 import { joinMatchmakingWithSession } from '../services/matchmaking.js';
 
 //TODO: Extract user id from JWT, do not pass user id into the payload!
@@ -88,8 +91,44 @@ export default async function matchmakingRoutes(fastify: FastifyInstance) {
               case 'select_asset': {
                 const { matchId, ticker, userId } = data.payload;
 
+                //This is intentional in case of reconnection
+                await fastify.redis.hset(
+                  `player:${userId}`,
+                  'connectionId',
+                  connectionId
+                );
+
                 try {
                   await handleAssetSelection(fastify, userId, {
+                    matchId,
+                    ticker,
+                  });
+
+                  connection.socket.send(
+                    JSON.stringify({
+                      type: 'asset_selection_success',
+                      matchId,
+                      ticker,
+                    })
+                  );
+                } catch (error) {
+                  fastify.log.error({
+                    error,
+                    userId: data.userId,
+                    matchId,
+                    ticker,
+                    msg: 'Error handling asset selection',
+                  });
+                  throw error;
+                }
+                break;
+              }
+
+              case 'deselect_asset': {
+                const { matchId, ticker, userId } = data.payload;
+
+                try {
+                  await handleAssetDeselection(fastify, userId, {
                     matchId,
                     ticker,
                   });

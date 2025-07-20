@@ -46,9 +46,9 @@ async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(twilioPlugin);
 
   // await initApiGatewayManagementClient(fastify);
+  await fastify.register(fastifyWebsocket);
   await startMatchmakingWorker(fastify);
   await initMatchmaking(fastify);
-  await fastify.register(fastifyWebsocket);
 
   await fastify.register(healthRoutes);
   await fastify.register(matchmakingRoutes, { prefix: '/matchmaking' });
