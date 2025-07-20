@@ -8,6 +8,7 @@ import {
 import {
   handleAssetDeselection,
   handleAssetSelection,
+  handleReadyCheck,
 } from '../services/match-actions.js';
 import { joinMatchmakingWithSession } from '../services/matchmaking.js';
 
@@ -150,6 +151,12 @@ export default async function matchmakingRoutes(fastify: FastifyInstance) {
                   });
                   throw error;
                 }
+                break;
+              }
+
+              case 'ready_check': {
+                const { matchId, userId } = data;
+                await handleReadyCheck(fastify, userId, matchId);
                 break;
               }
 

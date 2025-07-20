@@ -4,7 +4,13 @@ import {
   validateMatchAccess,
 } from '../validators/match-validator.js';
 import { broadcastToMatch } from './connection-manager.js';
-import { addAssetToMatch, getMatch, removeAssetFromMatch } from './match.js';
+import {
+  addAssetToMatch,
+  getMatch,
+  removeAssetFromMatch,
+  startMatch,
+  updatePlayerReadyStatus,
+} from './match.js';
 
 export const handleAssetSelection = async (
   fastify: FastifyInstance,
@@ -95,42 +101,48 @@ export const handleAssetDeselection = async (
     throw new Error('Unknown error during asset deselection');
   }
 };
-// export async function handleReadyCheck(
-//   fastify: FastifyInstance,
-//   userId: string,
-//   payload: { matchId: string }
-// ) {
-//   const match = await getMatch(fastify, payload.matchId);
-//   if (!match.players.includes(userId)) {
-//     throw new Error('Not authorized for this match');
-//   }
+export const handleReadyCheck = async (
+  fastify: FastifyInstance,
+  userId: string,
+  matchId: string
+) => {
+  try {
+    const matchData = await getMatch(fastify, matchId);
+    validateMatchAccess(matchData, userId);
 
-//   // Update ready status
-//   await fastify.dynamodb.send(
-//     new UpdateCommand({
-//       TableName: 'WageTable',
-//       Key: { PK: `MATCH#${payload.matchId}`, SK: 'DETAILS' },
-//       UpdateExpression: 'SET playerAssets.#userId.readyAt = :now',
-//       ExpressionAttributeNames: { '#userId': userId },
-//       ExpressionAttributeValues: { ':now': new Date().toISOString() },
-//     })
-//   );
+    const updatedMatch = await updatePlayerReadyStatus(
+      fastify,
+      matchId,
+      userId
+    );
 
-//   // Check if both players ready
-//   const updatedMatch = await getMatch(fastify, payload.matchId);
-//   const allReady = Object.values(updatedMatch.playerAssets).every(
-//     player => player.readyAt
-//   );
+    const bothPlayersReady = Object.values(updatedMatch.playerAssets).every(
+      player => player.readyAt
+    );
 
-//   if (allReady) {
-//     // Start match
-//     await startMatch(fastify, payload.matchId);
-//   }
+    if (bothPlayersReady) {
+      await startMatch(fastify, matchId);
+    }
 
-//   await broadcastToMatch(fastify, match.matchId, {
-//     type: 'ready_status_update',
-//     matchId: match.matchId,
-//     playerAssets: updatedMatch.playerAssets,
-//     status: allReady ? 'in_progress' : 'ready_check',
-//   });
-// }
+    await broadcastToMatch(fastify, updatedMatch.matchId, {
+      type: 'ready_status_update',
+      matchId: updatedMatch.matchId,
+      playerAssets: updatedMatch.playerAssets,
+      status: bothPlayersReady ? 'in_progress' : 'ready_check',
+    });
+
+    return {
+      type: 'ready_check_success',
+      matchId: updatedMatch.matchId,
+      bothPlayersReady,
+    };
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.name === 'ConditionalCheckFailedException') {
+        throw new Error('Failed to update ready status: ' + error.message);
+      }
+      throw error;
+    }
+    throw new Error('Unknown error during ready check');
+  }
+};

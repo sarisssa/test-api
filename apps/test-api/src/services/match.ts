@@ -230,6 +230,89 @@ export const removeAssetFromMatch = async (
   }
 };
 
+export const updatePlayerReadyStatus = async (
+  fastify: FastifyInstance,
+  matchId: string,
+  userId: string
+): Promise<DynamoDBMatchItem> => {
+  try {
+    await fastify.dynamodb.send(
+      new UpdateCommand({
+        TableName: 'WageTable',
+        Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
+        UpdateExpression: 'SET playerAssets.#userId.readyAt = :now',
+        ExpressionAttributeNames: { '#userId': userId },
+        ExpressionAttributeValues: { ':now': new Date().toISOString() },
+      })
+    );
+
+    const updatedMatch = await getMatch(fastify, matchId);
+    if (!updatedMatch) {
+      throw new Error(
+        'Failed to fetch updated match after ready status update'
+      );
+    }
+
+    fastify.log.info({
+      matchId,
+      userId,
+      msg: 'Player ready status updated successfully',
+    });
+
+    return updatedMatch;
+  } catch (error) {
+    fastify.log.error({
+      error,
+      matchId,
+      userId,
+      msg: 'Error updating player ready status',
+    });
+    throw error;
+  }
+};
+
+export const startMatch = async (
+  fastify: FastifyInstance,
+  matchId: string
+): Promise<DynamoDBMatchItem> => {
+  try {
+    const now = new Date().toISOString();
+
+    await fastify.dynamodb.send(
+      new UpdateCommand({
+        TableName: 'WageTable',
+        Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
+        UpdateExpression: 'SET #status = :status, matchStartedAt = :now',
+        ConditionExpression: 'attribute_exists(PK) AND attribute_exists(SK)',
+        ExpressionAttributeNames: { '#status': 'status' },
+        ExpressionAttributeValues: {
+          ':status': 'in_progress',
+          ':now': now,
+        },
+      })
+    );
+
+    const match = await getMatch(fastify, matchId);
+    if (!match) {
+      throw new Error('Failed to fetch match after starting');
+    }
+
+    fastify.log.info({
+      matchId,
+      msg: 'Match started successfully',
+    });
+
+    return match;
+  } catch (error) {
+    fastify.log.error({
+      error,
+      matchId,
+      msg: 'Error starting match',
+    });
+    throw error;
+  }
+};
+
 export const endMatch = async (
   fastify: FastifyInstance,
   matchId: string,
