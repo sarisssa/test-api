@@ -1,0 +1,28 @@
+# Node artifact files
+node_modules/
+dist/
+
+# Environment files
+.env
+.env.*
+
+# Serverless Framework
+.serverless/
+function.zip
+output.json
+
+# Generated files
+lambda-package.json
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
