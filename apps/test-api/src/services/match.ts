@@ -1,17 +1,18 @@
 import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { FastifyInstance } from 'fastify';
-import { REDIS_KEYS } from '../constants.js';
-import { NotEnoughAssetsError, ValidationError } from '../errors/index.js';
+import { v4 as uuidv4 } from 'uuid';
+import { MAX_ASSETS_PER_PLAYER, REDIS_KEYS } from '../constants.js';
+import { ValidationError } from '../errors/index.js';
 import { DynamoDBMatchItem } from '../models/match.js';
 import { PlayerAsset } from '../types/match';
 import { MatchResult } from '../types/matchmaking.js';
 import {
+  canPlayerReadyUp,
   validateAssetSelection,
   validatePlayers,
 } from '../validators/match-validator.js';
 
-const ASSET_SELECTION_DURATION = 2 * 60 * 1000; // 2 minutes
-const MAX_ASSETS_PER_PLAYER = 3;
+const ASSET_SELECTION_DURATION = 2 * 60 * 1000;
 
 export const createMatch = async (
   fastify: FastifyInstance,
@@ -19,7 +20,7 @@ export const createMatch = async (
 ): Promise<MatchResult> => {
   validatePlayers(players);
 
-  const matchId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const matchId = uuidv4();
   const match: MatchResult = {
     matchId,
     players,
@@ -98,20 +99,42 @@ export const getMatch = async (
   matchId: string
 ): Promise<DynamoDBMatchItem | undefined> => {
   try {
-    fastify.log.info({
-      matchId,
-      msg: 'Attempting to fetch match from DynamoDB',
-      key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
-    });
+    const cachedMatch = await fastify.redis.hgetall(REDIS_KEYS.MATCH(matchId));
 
-    const result = await fastify.dynamodb.send(
+    if (
+      cachedMatch &&
+      cachedMatch.playerAssets &&
+      cachedMatch.players &&
+      cachedMatch.status
+    ) {
+      fastify.log.info({ matchId, msg: 'Match found in Redis cache' });
+      return {
+        PK: `MATCH#${matchId}`,
+        SK: 'DETAILS',
+        EntityType: 'Match',
+        matchId,
+        players: JSON.parse(cachedMatch.players),
+        status: cachedMatch.status,
+        createdAt: cachedMatch.createdAt,
+        playerAssets: JSON.parse(cachedMatch.playerAssets),
+        assetSelectionStartedAt: cachedMatch.assetSelectionStartedAt,
+        assetSelectionEndedAt: cachedMatch.assetSelectionEndedAt || '',
+        matchStartedAt: cachedMatch.matchStartedAt || '',
+        portfolios: cachedMatch.portfolios
+          ? JSON.parse(cachedMatch.portfolios)
+          : {},
+      } as DynamoDBMatchItem;
+    }
+
+    //Cache miss, fetch from DynamoDB
+    const matchResult = await fastify.dynamodb.send(
       new GetCommand({
         TableName: 'WageTable',
         Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
       })
     );
 
-    if (!result.Item) {
+    if (!matchResult.Item) {
       fastify.log.warn({
         matchId,
         msg: 'Match not found in DynamoDB',
@@ -120,13 +143,26 @@ export const getMatch = async (
       return undefined;
     }
 
-    fastify.log.info({
-      matchId,
-      matchData: result.Item,
-      msg: 'Match found in DynamoDB',
+    const match = matchResult.Item as DynamoDBMatchItem;
+
+    // Cache the complete result from DynamoDB
+    await fastify.redis.hset(REDIS_KEYS.MATCH(matchId), {
+      players: JSON.stringify(match.players),
+      status: match.status,
+      createdAt: match.createdAt,
+      playerAssets: JSON.stringify(match.playerAssets),
+      assetSelectionStartedAt: match.assetSelectionStartedAt,
+      assetSelectionEndedAt: match.assetSelectionEndedAt || '',
+      matchStartedAt: match.matchStartedAt || '',
+      portfolios: JSON.stringify(match.portfolios || {}),
     });
 
-    return result.Item as DynamoDBMatchItem;
+    fastify.log.info({
+      matchId,
+      msg: 'Match cached in Redis after DynamoDB fetch',
+    });
+
+    return match;
   } catch (error) {
     fastify.log.error({
       error,
@@ -177,6 +213,8 @@ export const addAssetToMatch = async (
         },
       })
     );
+
+    await fastify.redis.del(REDIS_KEYS.MATCH(matchId));
 
     fastify.log.info({
       matchId,
@@ -230,6 +268,8 @@ export const removeAssetFromMatch = async (
       })
     );
 
+    await fastify.redis.del(REDIS_KEYS.MATCH(matchId));
+
     fastify.log.info({
       matchId,
       userId,
@@ -259,20 +299,7 @@ export const updatePlayerReadyStatus = async (
       throw new Error('Match not found when attempting to ready up.');
     }
 
-    const playerAssets = currentMatch.playerAssets?.[userId]?.assets;
-
-    if (!playerAssets || playerAssets.length < MAX_ASSETS_PER_PLAYER) {
-      fastify.log.warn({
-        matchId,
-        userId,
-        currentAssetCount: playerAssets?.length || 0,
-        requiredAssetCount: MAX_ASSETS_PER_PLAYER,
-        msg: 'Player attempted to ready up without selecting enough assets.',
-      });
-      throw new NotEnoughAssetsError(
-        `Please select ${MAX_ASSETS_PER_PLAYER} assets before marking yourself ready.`
-      );
-    }
+    canPlayerReadyUp(currentMatch, userId);
 
     await fastify.dynamodb.send(
       new UpdateCommand({
@@ -284,6 +311,7 @@ export const updatePlayerReadyStatus = async (
       })
     );
 
+    await fastify.redis.del(REDIS_KEYS.MATCH(matchId));
     const updatedMatch = await getMatch(fastify, matchId);
     if (!updatedMatch) {
       throw new Error(
@@ -330,6 +358,7 @@ export const startMatch = async (
       })
     );
 
+    await fastify.redis.del(REDIS_KEYS.MATCH(matchId));
     const match = await getMatch(fastify, matchId);
     if (!match) {
       throw new Error('Failed to fetch match after starting');

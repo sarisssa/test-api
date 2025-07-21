@@ -119,14 +119,22 @@ export const handleReadyCheck = async (
 
     if (bothPlayersReady) {
       await startMatch(fastify, matchId);
-    }
 
-    await broadcastToMatch(fastify, updatedMatch.matchId, {
-      type: 'ready_status_update',
-      matchId: updatedMatch.matchId,
-      playerAssets: updatedMatch.playerAssets,
-      status: bothPlayersReady ? 'in_progress' : 'ready_check',
-    });
+      await broadcastToMatch(fastify, updatedMatch.matchId, {
+        type: 'match_started',
+        matchId: updatedMatch.matchId,
+        matchStartedAt: new Date().toISOString(),
+        playerAssets: updatedMatch.playerAssets,
+        message: 'Match is starting! Good luck!',
+      });
+    } else {
+      await broadcastToMatch(fastify, updatedMatch.matchId, {
+        type: 'ready_status_update',
+        matchId: updatedMatch.matchId,
+        playerAssets: updatedMatch.playerAssets,
+        status: 'asset_selection',
+      });
+    }
 
     return {
       type: 'ready_check_success',
