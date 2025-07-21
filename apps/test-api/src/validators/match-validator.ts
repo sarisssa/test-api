@@ -1,14 +1,14 @@
+import { MAX_ASSETS_PER_PLAYER } from '../constants.js';
 import {
   DuplicateAssetError,
   IdenticalAssetSetError,
   MatchNotFoundError,
   MatchValidationError,
   MaxAssetsReachedError,
+  NotEnoughAssetsError,
   UnauthorizedMatchAccessError,
 } from '../errors/index.js';
 import { DynamoDBMatchItem } from '../models/match.js';
-
-const MAX_ASSETS_PER_PLAYER = 3;
 
 export const validatePlayers = (players: string[]): void => {
   // Check for unique players
@@ -83,5 +83,17 @@ export const validateAssetSelection = (
     ) {
       throw new IdenticalAssetSetError();
     }
+  }
+};
+
+export const canPlayerReadyUp = (
+  match: DynamoDBMatchItem,
+  userId: string
+): void => {
+  const playerAssets = match.playerAssets?.[userId]?.assets;
+  if (!playerAssets || playerAssets.length < MAX_ASSETS_PER_PLAYER) {
+    throw new NotEnoughAssetsError(
+      `Please select ${MAX_ASSETS_PER_PLAYER} assets before marking yourself ready.`
+    );
   }
 };

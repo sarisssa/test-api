@@ -7,12 +7,7 @@ export interface DynamoDBMatchItem {
 
   matchId: string;
   players: string[];
-  status:
-    | 'asset_selection'
-    | 'ready_check'
-    | 'in_progress'
-    | 'completed'
-    | 'cancelled';
+  status: 'asset_selection' | 'in_progress' | 'completed' | 'cancelled';
   createdAt: string;
 
   // --- Asset Selection Phase ---

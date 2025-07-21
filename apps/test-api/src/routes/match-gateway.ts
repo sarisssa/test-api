@@ -137,7 +137,7 @@ export default async function matchGatewayRoutes(fastify: FastifyInstance) {
 
                   connection.socket.send(
                     JSON.stringify({
-                      type: 'asset_selection_success',
+                      type: 'asset_deselection_success',
                       matchId,
                       ticker,
                     })
