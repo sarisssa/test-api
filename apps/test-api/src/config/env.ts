@@ -7,6 +7,7 @@ export const envSchema: FastifyEnvOptions['schema'] = {
     'TWILIO_ACCOUNT_SID',
     'TWILIO_AUTH_TOKEN',
     'TWILIO_VERIFY_SERVICE_SID',
+    'PHONE_HASH_SALT',
   ],
   properties: {
     JWT_SECRET: {
@@ -37,6 +38,10 @@ export const envSchema: FastifyEnvOptions['schema'] = {
       type: 'string',
       minLength: 1,
     },
+    PHONE_HASH_SALT: {
+      type: 'string',
+      minLength: 1,
+    },
     PORT: {
       type: 'number',
       default: 3000,
@@ -61,6 +66,7 @@ export type Env = {
   TWILIO_ACCOUNT_SID: string;
   TWILIO_AUTH_TOKEN: string;
   TWILIO_VERIFY_SERVICE_SID: string;
+  PHONE_HASH_SALT: string;
   PORT: number;
   HOST: string;
   NODE_ENV: 'development' | 'production' | 'test';

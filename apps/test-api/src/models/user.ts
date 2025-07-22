@@ -3,6 +3,8 @@ export interface DynamoDBUserItem {
   SK: 'PROFILE';
   EntityType: 'User';
   userId: string;
+  hashedPhoneNumber: string;
+  //TODO: Encrypt at rest
   phoneNumber: string;
   username?: string;
   emailAddress?: string;

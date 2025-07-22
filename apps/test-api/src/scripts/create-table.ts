@@ -41,7 +41,10 @@ async function createTable() {
     AttributeDefinitions: [
       { AttributeName: 'PK', AttributeType: ScalarAttributeType.S },
       { AttributeName: 'SK', AttributeType: ScalarAttributeType.S },
-      { AttributeName: 'phoneNumber', AttributeType: ScalarAttributeType.S },
+      {
+        AttributeName: 'hashedPhoneNumber',
+        AttributeType: ScalarAttributeType.S,
+      },
       { AttributeName: 'username', AttributeType: ScalarAttributeType.S },
       { AttributeName: 'status', AttributeType: ScalarAttributeType.S },
       { AttributeName: 'createdAt', AttributeType: ScalarAttributeType.S },
@@ -50,7 +53,9 @@ async function createTable() {
     GlobalSecondaryIndexes: [
       {
         IndexName: 'PhoneNumber-GSI',
-        KeySchema: [{ AttributeName: 'phoneNumber', KeyType: KeyType.HASH }],
+        KeySchema: [
+          { AttributeName: 'hashedPhoneNumber', KeyType: KeyType.HASH },
+        ],
         Projection: { ProjectionType: ProjectionType.ALL },
       },
       {

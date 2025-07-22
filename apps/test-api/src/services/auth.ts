@@ -1,12 +1,6 @@
 import { FastifyInstance } from 'fastify';
+import { formatPhoneNumber } from '../utils.js';
 import { createUser, findUserByPhone, updateUserLastLogin } from './user.js';
-
-const formatPhoneNumber = (phoneNumber: string): string => {
-  if (!phoneNumber.startsWith('+')) {
-    return '+1' + phoneNumber.replace(/\D/g, '');
-  }
-  return phoneNumber;
-};
 
 export const sendOtp = async (
   fastify: FastifyInstance,

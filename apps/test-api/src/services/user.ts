@@ -3,16 +3,19 @@ import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { DynamoDBUserItem } from '../models/user.js';
+import { formatPhoneNumber, hashPhoneNumber } from '../utils.js';
 
 export const findUserByPhone = async (
   fastify: FastifyInstance,
   phoneNumber: string
 ): Promise<DynamoDBUserItem | undefined> => {
+  const hashedPhoneNumber = hashPhoneNumber(phoneNumber);
+
   const result = await fastify.dynamodb.send(
     new GetCommand({
       TableName: 'WageTable',
       Key: {
-        PK: `USER#${phoneNumber}`,
+        PK: `USER#${hashedPhoneNumber}`,
         SK: 'PROFILE',
       },
     })
@@ -25,13 +28,18 @@ export const createUser = async (
   fastify: FastifyInstance,
   phoneNumber: string
 ): Promise<DynamoDBUserItem> => {
+  const hashedPhoneNumber = hashPhoneNumber(phoneNumber);
+  const normalizedPhone = formatPhoneNumber(phoneNumber);
+
   const userId = uuidv4();
+
   const user: DynamoDBUserItem = {
-    PK: `USER#${phoneNumber}`,
+    PK: `USER#${hashedPhoneNumber}`,
     SK: 'PROFILE',
     EntityType: 'User',
     userId,
-    phoneNumber,
+    hashedPhoneNumber,
+    phoneNumber: normalizedPhone,
     createdAt: new Date().toISOString(),
     lastLoggedIn: new Date().toISOString(),
     stats: {

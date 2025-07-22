@@ -14,6 +14,7 @@ import healthRoutes from './routes/health.js';
 import matchGatewayRoutes from './routes/match-gateway.js';
 import { startMatchmakingWorker } from './services/matchmaking-worker.js';
 import { initMatchmaking } from './services/matchmaking.js';
+import { initializePhoneHashSalt } from './utils.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -30,6 +31,8 @@ async function buildApp(): Promise<FastifyInstance> {
     schema: envSchema,
     dotenv: true,
   });
+
+  initializePhoneHashSalt(fastify.config.PHONE_HASH_SALT);
 
   await fastify.register(cors);
   await fastify.register(jwt, {
