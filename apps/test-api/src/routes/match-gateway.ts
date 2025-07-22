@@ -156,8 +156,8 @@ export default async function matchGatewayRoutes(fastify: FastifyInstance) {
               }
 
               case 'ready_check': {
-                const { matchId, userId } = data;
-                await handleReadyCheck(fastify, userId, matchId);
+                const { matchId, userId } = data.payload;
+                await handleReadyCheck(fastify, userId, { matchId });
                 break;
               }
 

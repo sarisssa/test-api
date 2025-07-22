@@ -101,8 +101,9 @@ export const handleAssetDeselection = async (
 export const handleReadyCheck = async (
   fastify: FastifyInstance,
   userId: string,
-  matchId: string
+  payload: { matchId: string }
 ) => {
+  const { matchId } = payload;
   try {
     const matchData = await getMatch(fastify, matchId);
     validateMatchAccess(matchData, userId);
