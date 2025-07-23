@@ -14,7 +14,7 @@ import healthRoutes from './routes/health.js';
 import matchGatewayRoutes from './routes/match-gateway.js';
 import { startMatchmakingWorker } from './services/matchmaking-worker.js';
 import { initMatchmaking } from './services/matchmaking.js';
-import { initializePhoneHashSalt } from './utils.js';
+import { initializePhoneHashSalt } from './utils/phone-utils.js';
 
 declare module 'fastify' {
   interface FastifyInstance {

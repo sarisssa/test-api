@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { formatPhoneNumber } from '../utils.js';
+import { formatPhoneNumber } from '../utils/phone-utils.js';
 import { createUser, findUserByPhone, updateUserLastLogin } from './user.js';
 
 export const sendOtp = async (

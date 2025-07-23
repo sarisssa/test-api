@@ -3,7 +3,7 @@ import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { DynamoDBUserItem } from '../models/user.js';
-import { formatPhoneNumber, hashPhoneNumber } from '../utils.js';
+import { formatPhoneNumber, hashPhoneNumber } from '../utils/phone-utils.js';
 
 export const findUserByPhone = async (
   fastify: FastifyInstance,
