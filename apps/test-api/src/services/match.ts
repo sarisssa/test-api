@@ -2,16 +2,18 @@ import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import {
-  INITIAL_PORTFOLIO_VALUE,
   MAX_ASSETS_PER_PLAYER,
   REDIS_KEYS,
-  REQUIRED_ASSET_COUNT,
   TWELVE_DATA_API_BASE_URL,
 } from '../constants.js';
 import { ValidationError } from '../errors/index.js';
 import { DynamoDBMatchItem } from '../models/match.js';
-import { MatchPortfolios, PlayerAsset } from '../types/match';
+import { PlayerAsset } from '../types/match';
 import { MatchResult } from '../types/matchmaking.js';
+import {
+  collectUniqueTickers,
+  initializePlayerPortfolios,
+} from '../utils/match-utils.js';
 import {
   canPlayerReadyUp,
   validateAssetSelection,
@@ -348,24 +350,38 @@ export const startMatch = async (
   matchId: string
 ): Promise<DynamoDBMatchItem> => {
   try {
-    const currentMatch = await getMatch(fastify, matchId);
-    if (!currentMatch) {
+    // First check if match is already started - if so, return existing state
+    const existingMatch = await getMatch(fastify, matchId);
+    if (!existingMatch) {
       throw new Error('Match not found when attempting to start');
     }
 
-    const uniqueTickers = new Set<string>();
-
-    Object.values(currentMatch.playerAssets).forEach(playerAssetsEntry => {
-      playerAssetsEntry.assets.forEach(asset => {
-        uniqueTickers.add(asset.ticker);
+    // If match is already in progress or completed, return as-is
+    if (
+      existingMatch.status === 'in_progress' ||
+      existingMatch.status === 'completed'
+    ) {
+      fastify.log.info({
+        matchId,
+        status: existingMatch.status,
+        msg: 'Match already started or completed, returning existing state',
       });
-    });
+      return existingMatch;
+    }
 
-    if (uniqueTickers.size === 0) {
+    if (existingMatch.status !== 'asset_selection') {
+      throw new ValidationError(
+        `Match cannot be started - invalid status: ${existingMatch.status}`
+      );
+    }
+
+    const uniqueTickers = collectUniqueTickers(existingMatch.playerAssets);
+
+    if (uniqueTickers.length === 0) {
       throw new Error('No assets found in match');
     }
 
-    const commaSeparatedTickerSymbols = Array.from(uniqueTickers).join(',');
+    const commaSeparatedTickerSymbols = uniqueTickers.join(',');
 
     const priceApiResponse = await fetch(
       `${TWELVE_DATA_API_BASE_URL}/price?symbol=${commaSeparatedTickerSymbols}&apikey=${fastify.config.TWELVE_DATA_API_KEY}`
@@ -382,94 +398,57 @@ export const startMatch = async (
     }
 
     const fetchedPriceData = await priceApiResponse.json();
-
-    fastify.log.info({
-      matchId,
-      fetchedPriceData,
-      msg: 'Received price data from Twelve Data',
-    });
-
     const matchStartTimeIso = new Date().toISOString();
-
-    const playerPortfolios: MatchPortfolios = {};
-
-    for (const playerId of currentMatch.players) {
-      const playerInitialAssets = currentMatch.playerAssets[playerId].assets;
-      fastify.log.info({
-        matchId,
-        playerId,
-        assets: playerInitialAssets,
-        msg: 'Processing player assets',
-      });
-
-      const processedAssets = playerInitialAssets.map(asset => {
-        if (
-          !fetchedPriceData[asset.ticker] ||
-          !fetchedPriceData[asset.ticker].price
-        ) {
-          fastify.log.error({
-            matchId,
-            playerId,
-            ticker: asset.ticker,
-            priceData: fetchedPriceData[asset.ticker],
-            msg: 'Missing price data for ticker',
-          });
-          throw new Error(`Missing price data for ticker: ${asset.ticker}`);
-        }
-        const initialPrice = parseFloat(fetchedPriceData[asset.ticker].price);
-        const shares =
-          INITIAL_PORTFOLIO_VALUE / REQUIRED_ASSET_COUNT / initialPrice;
-        return {
-          ticker: asset.ticker,
-          initialPrice,
-          currentPrice: initialPrice,
-          shares,
-          lastUpdatedAt: matchStartTimeIso,
-        };
-      });
-
-      playerPortfolios[playerId] = {
-        initialValue: INITIAL_PORTFOLIO_VALUE,
-        currentValue: INITIAL_PORTFOLIO_VALUE,
-        assets: processedAssets,
-      };
-
-      fastify.log.info({
-        matchId,
-        playerId,
-        portfolio: playerPortfolios[playerId],
-        msg: 'Portfolio initialized for player',
-      });
-    }
-
-    fastify.log.info({
-      matchId,
-      portfolios: playerPortfolios,
-      msg: 'All portfolios initialized, updating match in DynamoDB',
-    });
-
-    await fastify.dynamodb.send(
-      new UpdateCommand({
-        TableName: 'WageTable',
-        Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
-        UpdateExpression:
-          'SET #status = :status, matchStartedAt = :now, portfolios = :portfolios',
-        ConditionExpression: 'attribute_exists(PK) AND attribute_exists(SK)',
-        ExpressionAttributeNames: { '#status': 'status' },
-        ExpressionAttributeValues: {
-          ':status': 'in_progress',
-          ':now': matchStartTimeIso,
-          ':portfolios': playerPortfolios,
-        },
-      })
+    const playerPortfolios = initializePlayerPortfolios(
+      existingMatch,
+      fetchedPriceData,
+      matchStartTimeIso
     );
 
-    fastify.log.info({
-      matchId,
-      msg: 'Match updated in DynamoDB, clearing Redis cache',
-    });
+    // Update portfolios within the match and transition match to in_progress
+    try {
+      await fastify.dynamodb.send(
+        new UpdateCommand({
+          TableName: 'WageTable',
+          Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
+          UpdateExpression:
+            'SET #status = :newStatus, matchStartedAt = :now, portfolios = :portfolios',
+          ConditionExpression:
+            'attribute_exists(PK) AND attribute_exists(SK) AND #status = :expectedStatus',
+          ExpressionAttributeNames: {
+            '#status': 'status',
+          },
+          ExpressionAttributeValues: {
+            ':newStatus': 'in_progress',
+            ':expectedStatus': 'asset_selection',
+            ':now': matchStartTimeIso,
+            ':portfolios': playerPortfolios,
+          },
+        })
+      );
+    } catch (error: unknown) {
+      if (
+        error instanceof Error &&
+        error.name === 'ConditionalCheckFailedException'
+      ) {
+        // If portfolios were already set by another process, fetch and return current state
+        const currentState = await getMatch(fastify, matchId);
+        if (currentState?.portfolios) {
+          fastify.log.info({
+            matchId,
+            msg: 'Race condition: Another process already initialized portfolios',
+          });
+          return currentState;
+        }
+        throw new ValidationError(
+          'Failed to update match portfolios - match status changed unexpectedly'
+        );
+      }
+      throw error;
+    }
 
     await fastify.redis.del(REDIS_KEYS.MATCH(matchId));
+
     const match = await getMatch(fastify, matchId);
     if (!match) {
       throw new Error('Failed to fetch match after starting');
@@ -482,12 +461,41 @@ export const startMatch = async (
     });
 
     return match;
-  } catch (error) {
+  } catch (error: unknown) {
     fastify.log.error({
       error,
       matchId,
       msg: 'Error starting match',
     });
+
+    if (
+      error instanceof Error &&
+      error.name !== 'ConditionalCheckFailedException'
+    ) {
+      try {
+        await fastify.dynamodb.send(
+          new UpdateCommand({
+            TableName: 'WageTable',
+            Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
+            UpdateExpression: 'SET #status = :status',
+            ConditionExpression:
+              'attribute_exists(PK) AND attribute_exists(SK)',
+            ExpressionAttributeNames: { '#status': 'status' },
+            ExpressionAttributeValues: {
+              ':status': 'asset_selection',
+            },
+          })
+        );
+        await fastify.redis.del(REDIS_KEYS.MATCH(matchId));
+      } catch (revertError) {
+        fastify.log.error({
+          error: revertError,
+          matchId,
+          msg: 'Failed to revert match status after error',
+        });
+      }
+    }
+
     throw error;
   }
 };
