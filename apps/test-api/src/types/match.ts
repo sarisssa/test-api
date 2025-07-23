@@ -16,6 +16,7 @@ export interface PortfolioAsset {
   ticker: string;
   initialPrice: number;
   currentPrice?: number;
+  shares: number; // Number of shares owned of this asset based on 33% of initial portfolio value
   percentageChange?: number;
   lastUpdatedAt?: string;
 }

@@ -7,6 +7,7 @@ export const envSchema: FastifyEnvOptions['schema'] = {
     'TWILIO_ACCOUNT_SID',
     'TWILIO_AUTH_TOKEN',
     'TWILIO_VERIFY_SERVICE_SID',
+    'TWELVE_DATA_API_KEY',
     'PHONE_HASH_SALT',
   ],
   properties: {
@@ -21,6 +22,10 @@ export const envSchema: FastifyEnvOptions['schema'] = {
     DYNAMODB_URL: {
       type: 'string',
       default: 'http://localhost:4566', // LocalStack endpoint
+    },
+    TWELVE_DATA_API_KEY: {
+      type: 'string',
+      minLength: 1,
     },
     DYNAMODB_REGION: {
       type: 'string',
@@ -63,6 +68,7 @@ export type Env = {
   REDIS_URL: string;
   DYNAMODB_URL: string;
   DYNAMODB_REGION: string;
+  TWELVE_DATA_API_KEY: string;
   TWILIO_ACCOUNT_SID: string;
   TWILIO_AUTH_TOKEN: string;
   TWILIO_VERIFY_SERVICE_SID: string;

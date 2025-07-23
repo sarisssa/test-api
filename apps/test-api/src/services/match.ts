@@ -1,10 +1,16 @@
 import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
-import { MAX_ASSETS_PER_PLAYER, REDIS_KEYS } from '../constants.js';
+import {
+  INITIAL_PORTFOLIO_VALUE,
+  MAX_ASSETS_PER_PLAYER,
+  REDIS_KEYS,
+  REQUIRED_ASSET_COUNT,
+  TWELVE_DATA_API_BASE_URL,
+} from '../constants.js';
 import { ValidationError } from '../errors/index.js';
 import { DynamoDBMatchItem } from '../models/match.js';
-import { PlayerAsset } from '../types/match';
+import { MatchPortfolios, PlayerAsset } from '../types/match';
 import { MatchResult } from '../types/matchmaking.js';
 import {
   canPlayerReadyUp,
@@ -342,21 +348,126 @@ export const startMatch = async (
   matchId: string
 ): Promise<DynamoDBMatchItem> => {
   try {
-    const now = new Date().toISOString();
+    const currentMatch = await getMatch(fastify, matchId);
+    if (!currentMatch) {
+      throw new Error('Match not found when attempting to start');
+    }
+
+    const uniqueTickers = new Set<string>();
+
+    Object.values(currentMatch.playerAssets).forEach(playerAssetsEntry => {
+      playerAssetsEntry.assets.forEach(asset => {
+        uniqueTickers.add(asset.ticker);
+      });
+    });
+
+    if (uniqueTickers.size === 0) {
+      throw new Error('No assets found in match');
+    }
+
+    const commaSeparatedTickerSymbols = Array.from(uniqueTickers).join(',');
+
+    const priceApiResponse = await fetch(
+      `${TWELVE_DATA_API_BASE_URL}/price?symbol=${commaSeparatedTickerSymbols}&apikey=${fastify.config.TWELVE_DATA_API_KEY}`
+    );
+
+    if (!priceApiResponse.ok) {
+      fastify.log.error({
+        matchId,
+        status: priceApiResponse.status,
+        statusText: priceApiResponse.statusText,
+        msg: 'Failed to fetch prices from Twelve Data',
+      });
+      throw new Error(`Failed to fetch prices: ${priceApiResponse.statusText}`);
+    }
+
+    const fetchedPriceData = await priceApiResponse.json();
+
+    fastify.log.info({
+      matchId,
+      fetchedPriceData,
+      msg: 'Received price data from Twelve Data',
+    });
+
+    const matchStartTimeIso = new Date().toISOString();
+
+    const playerPortfolios: MatchPortfolios = {};
+
+    for (const playerId of currentMatch.players) {
+      const playerInitialAssets = currentMatch.playerAssets[playerId].assets;
+      fastify.log.info({
+        matchId,
+        playerId,
+        assets: playerInitialAssets,
+        msg: 'Processing player assets',
+      });
+
+      const processedAssets = playerInitialAssets.map(asset => {
+        if (
+          !fetchedPriceData[asset.ticker] ||
+          !fetchedPriceData[asset.ticker].price
+        ) {
+          fastify.log.error({
+            matchId,
+            playerId,
+            ticker: asset.ticker,
+            priceData: fetchedPriceData[asset.ticker],
+            msg: 'Missing price data for ticker',
+          });
+          throw new Error(`Missing price data for ticker: ${asset.ticker}`);
+        }
+        const initialPrice = parseFloat(fetchedPriceData[asset.ticker].price);
+        const shares =
+          INITIAL_PORTFOLIO_VALUE / REQUIRED_ASSET_COUNT / initialPrice;
+        return {
+          ticker: asset.ticker,
+          initialPrice,
+          currentPrice: initialPrice,
+          shares,
+          lastUpdatedAt: matchStartTimeIso,
+        };
+      });
+
+      playerPortfolios[playerId] = {
+        initialValue: INITIAL_PORTFOLIO_VALUE,
+        currentValue: INITIAL_PORTFOLIO_VALUE,
+        assets: processedAssets,
+      };
+
+      fastify.log.info({
+        matchId,
+        playerId,
+        portfolio: playerPortfolios[playerId],
+        msg: 'Portfolio initialized for player',
+      });
+    }
+
+    fastify.log.info({
+      matchId,
+      portfolios: playerPortfolios,
+      msg: 'All portfolios initialized, updating match in DynamoDB',
+    });
 
     await fastify.dynamodb.send(
       new UpdateCommand({
         TableName: 'WageTable',
         Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
-        UpdateExpression: 'SET #status = :status, matchStartedAt = :now',
+        UpdateExpression:
+          'SET #status = :status, matchStartedAt = :now, portfolios = :portfolios',
         ConditionExpression: 'attribute_exists(PK) AND attribute_exists(SK)',
         ExpressionAttributeNames: { '#status': 'status' },
         ExpressionAttributeValues: {
           ':status': 'in_progress',
-          ':now': now,
+          ':now': matchStartTimeIso,
+          ':portfolios': playerPortfolios,
         },
       })
     );
+
+    fastify.log.info({
+      matchId,
+      msg: 'Match updated in DynamoDB, clearing Redis cache',
+    });
 
     await fastify.redis.del(REDIS_KEYS.MATCH(matchId));
     const match = await getMatch(fastify, matchId);
@@ -366,7 +477,8 @@ export const startMatch = async (
 
     fastify.log.info({
       matchId,
-      msg: 'Match started successfully',
+      portfolios: playerPortfolios,
+      msg: 'Match started successfully with initial prices',
     });
 
     return match;
