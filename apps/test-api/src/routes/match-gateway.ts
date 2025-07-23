@@ -9,7 +9,7 @@ import {
   handleAssetDeselection,
   handleAssetSelection,
   handleReadyCheck,
-} from '../services/match-actions.js';
+} from '../services/match.js';
 import { joinMatchmakingWithSession } from '../services/matchmaking.js';
 
 //TODO: Extract user id from JWT, do not pass user id into the payload!

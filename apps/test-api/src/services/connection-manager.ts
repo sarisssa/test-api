@@ -3,7 +3,6 @@ import Redis from 'ioredis';
 import { WebSocket } from 'ws';
 import { WEBSOCKET_OUTGOING_CHANNEL } from '../constants.js';
 import { MatchResult } from '../types/matchmaking.js';
-import { getMatch } from './match.js';
 
 // Local map to store active WebSocket connections for this specific Fargate task
 const activeConnections = new Map<string, WebSocket>();
@@ -181,7 +180,7 @@ export const broadcastToMatch = async (
     return;
   }
 
-  const match = await getMatch(fastify, matchId);
+  const match = await fastify.repositories.match.getMatch(matchId);
   if (!match) {
     fastify.log.error({ matchId, msg: 'Match not found for broadcasting' });
     return;
