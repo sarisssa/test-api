@@ -1,17 +1,50 @@
 service: match-processor
+useDotenv: true
 
 provider:
   name: aws
   runtime: nodejs18.x
+  timeout: 30
   stage: local
   region: us-east-1
+  environment:
+    SQS_QUEUE_URL:
+      Ref: MatchProcessorQueue
+    TWELVE_DATA_API_KEY: ${env:TWELVE_DATA_API_KEY}
+
+  iamRoleStatements:
+    - Effect: 'Allow'
+      Action:
+        - 'sqs:ReceiveMessage'
+        - 'sqs:DeleteMessage'
+        - 'sqs:GetQueueAttributes'
+        - 'sqs:GetQueueUrl'
+      Resource:
+        Fn::GetAtt:
+          - MatchProcessorQueue
+          - Arn
 
 functions:
   processMatches:
     handler: dist/index.handler
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt:
+              - MatchProcessorQueue
+              - Arn
+          batchSize: 1
+
+resources:
+  Resources:
+    MatchProcessorQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: match-processor-queue-local
 
 plugins:
   - serverless-localstack
+  - serverless-offline
 
 custom:
   localstack:
@@ -24,3 +57,6 @@ custom:
     docker:
       sudo: false
     skipImagePull: true
+  serverless-offline:
+    useChildProcesses: true
+    noPrependStageInUrl: true
