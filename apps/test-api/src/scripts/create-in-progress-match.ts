@@ -1,6 +1,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { v4 as uuidv4 } from 'uuid';
+import { AssetType } from '../types/match';
 
 const matchId = uuidv4();
 const now = new Date();
@@ -35,14 +36,17 @@ async function createTestMatch() {
           {
             selectedAt: now.toISOString(),
             ticker: 'MS',
+            assetType: AssetType.STOCK,
           },
           {
             selectedAt: now.toISOString(),
             ticker: 'AAPL',
+            assetType: AssetType.STOCK,
           },
           {
             selectedAt: now.toISOString(),
             ticker: 'TSLA',
+            assetType: AssetType.STOCK,
           },
         ],
       },
@@ -52,14 +56,17 @@ async function createTestMatch() {
           {
             selectedAt: now.toISOString(),
             ticker: 'AMZN',
+            assetType: AssetType.STOCK,
           },
           {
             selectedAt: now.toISOString(),
             ticker: 'META',
+            assetType: AssetType.STOCK,
           },
           {
             selectedAt: now.toISOString(),
             ticker: 'MSFT',
+            assetType: AssetType.STOCK,
           },
         ],
       },
