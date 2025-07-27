@@ -1,74 +1,55 @@
-import { DynamoDB } from '@aws-sdk/client-dynamodb'
-import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs'
-import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb'
-import { Context, SQSEvent } from 'aws-lambda'
+import { getActiveMatches, saveUpdatedMatches } from './services/dynamo-service.js'
+import { fetchCurrentPrices } from './services/price-service.js'
+import { scheduleNextExecution } from './services/sqs-service.js'
+import { getAllUniqueTickers, updateMatchPortfolios } from './utils/match-processor.js'
 
-const LOCALSTACK_ENDPOINT = 'http://host.docker.internal:4566'
-
-const ddb = DynamoDBDocument.from(
-  new DynamoDB({
-    endpoint: LOCALSTACK_ENDPOINT,
-    region: 'us-east-1'
-  })
-)
-
-const sqs = new SQSClient({
-  endpoint: LOCALSTACK_ENDPOINT,
-  region: 'us-east-1'
-})
-
-export const handler = async (event: SQSEvent, context: Context) => {
+export const handler = async () => {
   try {
-    console.log('Attempting DynamoDB scan for active matches...')
-    const scanParams = {
-      TableName: 'WageTable',
-      FilterExpression: '#status = :status',
-      ExpressionAttributeNames: {
-        '#status': 'status'
-      },
-      ExpressionAttributeValues: {
-        ':status': 'in_progress'
-      }
-    }
+    const matches = await getActiveMatches()
 
-    const { Items: matches = [] } = await ddb.scan(scanParams)
-    console.log(`DynamoDB scan complete. Found ${matches.length} active matches.`)
-
-    if (matches.length > 0) {
-      for (const match of matches) {
-        console.log(`Processing match: ID=${match.matchId || match.PK}, Status=${match.status}`)
-      }
-    } else {
+    if (matches.length === 0) {
       console.log('No active matches found to process in this invocation.')
+      await scheduleNextExecution()
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          message: 'No active matches found, scheduled next execution',
+          matchesProcessed: 0,
+          matchesUpdated: 0,
+          tickersProcessed: 0,
+          timestamp: new Date().toISOString(),
+          nextExecutionScheduled: true
+        })
+      }
     }
 
-    const sendMessageParams = {
-      QueueUrl: process.env.SQS_QUEUE_URL,
-      MessageBody: JSON.stringify({
-        source: 'self-invocation',
-        timestamp: Date.now()
-      }),
-      DelaySeconds: 10
-    }
+    const uniqueTickersArray = getAllUniqueTickers(matches)
 
-    await sqs.send(new SendMessageCommand(sendMessageParams))
-    console.log('Successfully scheduled next execution in 10 seconds.')
+    const priceData = await fetchCurrentPrices(uniqueTickersArray)
+
+    const updatedMatches = updateMatchPortfolios(matches, priceData)
+
+    await saveUpdatedMatches(updatedMatches)
+
+    await scheduleNextExecution()
 
     return {
       statusCode: 200,
       body: JSON.stringify({
-        message: 'Lambda executed successfully with full logic',
+        message: 'Lambda executed successfully with price updates',
         matchesProcessed: matches.length,
+        matchesUpdated: updatedMatches.length,
+        tickersProcessed: uniqueTickersArray.length,
         timestamp: new Date().toISOString(),
         nextExecutionScheduled: true
       })
     }
   } catch (error) {
-    console.error('Error in lambda execution with full logic:', error) // This often logs message and stack for Error objects
+    console.error('Error in lambda execution:', error)
     return {
       statusCode: 500,
       body: JSON.stringify({
-        message: 'Error in lambda execution with full logic',
+        message: 'Error in lambda execution',
         error: error instanceof Error ? error.message : 'Unknown error'
       })
     }
