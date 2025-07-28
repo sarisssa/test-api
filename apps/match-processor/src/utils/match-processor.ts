@@ -93,7 +93,7 @@ export const processMatchCompletions = (matches: Match[]): Match[] => {
   const now = new Date()
 
   for (const match of matches) {
-    if (match.matchEndedAt && new Date(match.matchEndedAt) <= now) {
+    if (match.matchTentativeEndTime && new Date(match.matchTentativeEndTime) <= now) {
       const completedMatch = { ...match }
 
       // Determine winner based on portfolio values

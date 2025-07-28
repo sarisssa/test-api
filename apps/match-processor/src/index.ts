@@ -51,7 +51,8 @@ export const handler = async () => {
 
     // Filter out completed matches from updatedMatches to avoid duplicates
     const ongoingMatches = updatedMatches.filter((match) => {
-      const hasEnded = match.matchEndedAt && new Date(match.matchEndedAt) <= new Date()
+      const hasEnded =
+        match.matchTentativeEndTime && new Date(match.matchTentativeEndTime) <= new Date()
       return !hasEnded
     })
 

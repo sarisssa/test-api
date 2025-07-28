@@ -33,6 +33,7 @@ export interface Match {
   EntityType: 'Match'
   createdAt: string
   matchStartedAt?: string
+  matchTentativeEndTime?: string
   matchEndedAt?: string
   playerAssets: Record<string, PlayerAssets>
   players: string[]
