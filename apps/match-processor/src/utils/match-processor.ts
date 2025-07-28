@@ -1,18 +1,30 @@
-import { Match, TickerPriceMap } from '../types'
+import { AssetType, Match, TickerPriceMap } from '../types'
+import { filterTickersByMarketHours } from './market-hours.js'
 
-export const getAllUniqueTickers = (matches: Match[]): string[] => {
-  const allTickers = new Set<string>()
+export const getAllUniqueTickersWithTypes = (
+  matches: Match[]
+): Array<{ ticker: string; assetType: AssetType }> => {
+  const tickerMap = new Map<string, AssetType>()
 
   for (const match of matches) {
     Object.values(match.playerAssets || {}).forEach((playerAssetEntry) => {
       playerAssetEntry?.assets?.forEach((asset) => {
-        if (asset.ticker) {
-          allTickers.add(asset.ticker)
+        if (asset.ticker && asset.assetType) {
+          tickerMap.set(asset.ticker, asset.assetType)
         }
       })
     })
   }
-  return Array.from(allTickers)
+
+  return Array.from(tickerMap.entries()).map(([ticker, assetType]) => ({
+    ticker,
+    assetType
+  }))
+}
+
+export const getActiveTickersForCurrentMarket = (matches: Match[]): string[] => {
+  const tickersWithTypes = getAllUniqueTickersWithTypes(matches)
+  return filterTickersByMarketHours(tickersWithTypes)
 }
 
 export const updateMatchPortfolios = (matches: Match[], priceData: TickerPriceMap): Match[] => {
@@ -75,4 +87,33 @@ export const updateMatchPortfolios = (matches: Match[], priceData: TickerPriceMa
     }
   }
   return updatedMatches
+}
+export const processMatchCompletions = (matches: Match[]): Match[] => {
+  const completedMatches: Match[] = []
+  const now = new Date()
+
+  for (const match of matches) {
+    if (match.matchEndedAt && new Date(match.matchEndedAt) <= now) {
+      const completedMatch = { ...match }
+
+      // Determine winner based on portfolio values
+      const playerIds = Object.keys(completedMatch.portfolios || {})
+      const winner = playerIds.reduce((prev, current) =>
+        (completedMatch.portfolios[current]?.currentValue || 0) >
+        (completedMatch.portfolios[prev]?.currentValue || 0)
+          ? current
+          : prev
+      )
+
+      completedMatch.winnerId = winner
+      completedMatch.status = 'completed'
+
+      console.log({
+        msg: 'Match completed!'
+      })
+      completedMatches.push(completedMatch)
+    }
+  }
+
+  return completedMatches
 }

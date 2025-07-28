@@ -1,7 +1,11 @@
 import { getActiveMatches, saveUpdatedMatches } from './services/dynamo-service.js'
 import { fetchCurrentPrices } from './services/price-service.js'
 import { scheduleNextExecution } from './services/sqs-service.js'
-import { getAllUniqueTickers, updateMatchPortfolios } from './utils/match-processor.js'
+import {
+  getActiveTickersForCurrentMarket,
+  processMatchCompletions,
+  updateMatchPortfolios
+} from './utils/match-processor.js'
 
 export const handler = async () => {
   try {
@@ -9,7 +13,6 @@ export const handler = async () => {
 
     if (matches.length === 0) {
       console.log('No active matches found to process in this invocation.')
-      await scheduleNextExecution()
       return {
         statusCode: 200,
         body: JSON.stringify({
@@ -23,15 +26,37 @@ export const handler = async () => {
       }
     }
 
-    const uniqueTickersArray = getAllUniqueTickers(matches)
+    const activeTickersArray = getActiveTickersForCurrentMarket(matches)
 
-    const priceData = await fetchCurrentPrices(uniqueTickersArray)
+    if (activeTickersArray.length === 0) {
+      console.log('No active tickers for current market hours - skipping price fetch.')
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          message: 'No active tickers for current market hours',
+          matchesProcessed: matches.length,
+          matchesUpdated: 0,
+          tickersProcessed: 0,
+          timestamp: new Date().toISOString(),
+          nextExecutionScheduled: true
+        })
+      }
+    }
+
+    const priceData = await fetchCurrentPrices(activeTickersArray)
 
     const updatedMatches = updateMatchPortfolios(matches, priceData)
 
-    await saveUpdatedMatches(updatedMatches)
+    const completedMatches = processMatchCompletions(updatedMatches)
 
-    await scheduleNextExecution()
+    // Filter out completed matches from updatedMatches to avoid duplicates
+    const ongoingMatches = updatedMatches.filter((match) => {
+      const hasEnded = match.matchEndedAt && new Date(match.matchEndedAt) <= new Date()
+      return !hasEnded
+    })
+
+    // Save only ongoing matches (still in_progress) and completed matches
+    await saveUpdatedMatches([...ongoingMatches, ...completedMatches])
 
     return {
       statusCode: 200,
@@ -39,7 +64,8 @@ export const handler = async () => {
         message: 'Lambda executed successfully with price updates',
         matchesProcessed: matches.length,
         matchesUpdated: updatedMatches.length,
-        tickersProcessed: uniqueTickersArray.length,
+        matchesCompleted: completedMatches.length,
+        tickersProcessed: activeTickersArray.length,
         timestamp: new Date().toISOString(),
         nextExecutionScheduled: true
       })
@@ -52,6 +78,12 @@ export const handler = async () => {
         message: 'Error in lambda execution',
         error: error instanceof Error ? error.message : 'Unknown error'
       })
+    }
+  } finally {
+    try {
+      await scheduleNextExecution()
+    } catch (schedulingError) {
+      console.error('Failed to schedule next execution:', schedulingError)
     }
   }
 }

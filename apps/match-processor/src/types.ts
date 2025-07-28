@@ -1,3 +1,9 @@
+export enum AssetType {
+  STOCK = 'STOCK',
+  CRYPTO = 'CRYPTO',
+  COMMODITY = 'COMMODITY'
+}
+
 export interface Asset {
   selectedAt: string
   ticker: string
@@ -5,6 +11,7 @@ export interface Asset {
   currentPrice: number
   lastUpdatedAt: string
   initialPrice: number
+  assetType: AssetType
 }
 
 export interface Portfolio {
@@ -18,6 +25,7 @@ export interface PlayerAssets {
   assets: Array<{
     selectedAt: string
     ticker: string
+    assetType: AssetType
   }>
 }
 
@@ -25,6 +33,7 @@ export interface Match {
   EntityType: 'Match'
   createdAt: string
   matchStartedAt?: string
+  matchEndedAt?: string
   playerAssets: Record<string, PlayerAssets>
   players: string[]
   SK: string
@@ -34,6 +43,7 @@ export interface Match {
   assetSelectionStartedAt?: string
   matchId: string
   status: 'asset_selection' | 'in_progress' | 'completed' | 'cancelled'
+  winnerId?: string
 }
 
 export interface PriceData {
