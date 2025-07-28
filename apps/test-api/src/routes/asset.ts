@@ -1,44 +1,46 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { findAssets, getAssetBySymbol } from '../services/asset.js';
+import { AssetType } from '../types/match';
 
 export default async function assetRoutes(fastify: FastifyInstance) {
-  // Base assets endpoint (optional, could just have the specific types)
-  fastify.get('/', async (request, reply) => {
-    return { status: 'List all assets endpoint (or provide a directory)' };
+  fastify.log.info('Asset routes plugin loaded');
+
+  fastify.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
+    fastify.log.info('Assets list endpoint hit');
+    const { search, type, limit } = request.query as {
+      search?: string;
+      type?: AssetType;
+      limit?: number;
+    };
+
+    const parsedLimit = limit ? parseInt(limit.toString(), 10) : 20;
+
+    try {
+      if (search) {
+        return await findAssets(fastify, search, type, parsedLimit);
+      }
+      return [];
+    } catch (error) {
+      console.error('Error in /assets endpoint:', error);
+      reply.status(500).send({ error: (error as Error).message });
+    }
   });
 
-  // Stock routes
-  fastify.get('/assets/stocks', async (request, reply) => {
-    // Logic to list all stocks
-    return { status: 'List all stocks endpoint' };
-  });
+  fastify.get('/:symbol', async (request, reply) => {
+    const { symbol } = request.params as { symbol: string };
 
-  fastify.get('/assets/stocks/:id', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    // Logic to get a specific stock by ID
-    return { status: `Get single stock with ID: ${id}` };
-  });
+    try {
+      const asset = await getAssetBySymbol(fastify, symbol);
 
-  // Crypto routes
-  fastify.get('/assets/crypto', async (request, reply) => {
-    // Logic to list all cryptocurrencies
-    return { status: 'List all cryptocurrencies endpoint' };
-  });
-
-  fastify.get('/assets/crypto/:id', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    // Logic to get a specific cryptocurrency by ID
-    return { status: `Get single cryptocurrency with ID: ${id}` };
-  });
-
-  // Commodities routes
-  fastify.get('/assets/commodities', async (request, reply) => {
-    // Logic to list all commodities
-    return { status: 'List all commodities endpoint' };
-  });
-
-  fastify.get('/assets/commodities/:id', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    // Logic to get a specific commodity by ID
-    return { status: `Get single commodity with ID: ${id}` };
+      if (asset) {
+        return asset;
+      } else {
+        fastify.log.info(`Asset not found: ${symbol}`);
+        reply.status(404).send({ error: 'Asset not found.' });
+      }
+    } catch (error) {
+      console.error(`Error in /assets/${symbol} endpoint:`, error);
+      reply.status(500).send({ error: (error as Error).message });
+    }
   });
 }
