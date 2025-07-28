@@ -54,12 +54,12 @@ async function createTestMatch() {
         assets: [
           {
             selectedAt: now.toISOString(),
-            ticker: 'AMZN',
+            ticker: 'MS',
             assetType: AssetType.STOCK,
           },
           {
             selectedAt: now.toISOString(),
-            ticker: 'META',
+            ticker: 'AAPL',
             assetType: AssetType.STOCK,
           },
           {
