@@ -17,6 +17,7 @@ export interface DynamoDBMatchItem {
 
   // --- Match Play Phase ---
   matchStartedAt?: string;
+  matchTentativeEndTime?: string;
   matchEndedAt?: string;
   winner?: string;
 

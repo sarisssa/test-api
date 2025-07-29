@@ -42,6 +42,7 @@ export const processAssetWithPrice = (
 
   return {
     ticker: asset.ticker,
+    assetType: asset.assetType,
     initialPrice,
     currentPrice: initialPrice,
     shares,

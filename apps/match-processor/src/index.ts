@@ -9,6 +9,8 @@ import {
 
 export const handler = async () => {
   try {
+    //TODO: Optmization get watched matches instead (optimization)
+    //TODO: Make a manual call to fetch pricing right when a match hits tentativeEndTime to determine exact winner
     const matches = await getActiveMatches()
 
     if (matches.length === 0) {
@@ -45,6 +47,7 @@ export const handler = async () => {
 
     const priceData = await fetchCurrentPrices(activeTickersArray)
 
+    //Changee data model as we no longer need currentPrice
     const updatedMatches = updateMatchPortfolios(matches, priceData)
 
     const completedMatches = processMatchCompletions(updatedMatches)

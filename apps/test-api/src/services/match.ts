@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { TWELVE_DATA_API_BASE_URL } from '../constants.js';
 import { ValidationError } from '../errors/index.js';
 import { DynamoDBMatchItem } from '../models/match.js';
-import { PlayerAsset } from '../types/match';
+import { AssetType, PlayerAsset } from '../types/match.js';
 import { MatchResult } from '../types/matchmaking.js';
 import {
   collectUniqueTickers,
@@ -56,9 +56,11 @@ export const handleAssetSelection = async (
 
     validateAssetSelection(match, userId, ticker);
 
+    //TODO: Hard code to Stock right now, please add assetType to the payload
     const newAsset: PlayerAsset = {
       ticker,
       selectedAt: new Date().toISOString(),
+      assetType: AssetType.STOCK,
     };
 
     await fastify.repositories.match.persistMatchAsset(

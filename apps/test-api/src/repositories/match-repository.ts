@@ -294,12 +294,17 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     matchStartTimeIso: string
   ): Promise<void> => {
     try {
+      //TODO: 30 second match time for now, please amend later
+      const matchTentativeEndTimeIso = new Date(
+        new Date(matchStartTimeIso).getTime() + 30 * 1000
+      ).toISOString();
+
       await dynamodb.send(
         new UpdateCommand({
           TableName: 'WageTable',
           Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
           UpdateExpression:
-            'SET #status = :newStatus, matchStartedAt = :now, portfolios = :portfolios',
+            'SET #status = :newStatus, matchStartedAt = :now, portfolios = :portfolios, matchTentativeEndTime = :tentativeEndTime',
           ConditionExpression:
             'attribute_exists(PK) AND attribute_exists(SK) AND #status = :expectedStatus',
           ExpressionAttributeNames: {
@@ -310,6 +315,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
             ':expectedStatus': 'asset_selection',
             ':now': matchStartTimeIso,
             ':portfolios': portfolios,
+            ':tentativeEndTime': matchTentativeEndTimeIso,
           },
         })
       );

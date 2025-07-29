@@ -3,10 +3,7 @@ import { findAssets, getAssetBySymbol } from '../services/asset.js';
 import { AssetType } from '../types/match';
 
 export default async function assetRoutes(fastify: FastifyInstance) {
-  fastify.log.info('Asset routes plugin loaded');
-
   fastify.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
-    fastify.log.info('Assets list endpoint hit');
     const { search, type, limit } = request.query as {
       search?: string;
       type?: AssetType;

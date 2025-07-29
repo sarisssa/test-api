@@ -1,6 +1,13 @@
+export enum AssetType {
+  STOCK = 'STOCK',
+  CRYPTO = 'CRYPTO',
+  COMMODITY = 'COMMODITY',
+}
+
 export interface PlayerAsset {
   ticker: string;
   selectedAt: string;
+  assetType: AssetType;
 }
 
 export interface PlayerAssetSelection {
@@ -19,6 +26,7 @@ export interface PortfolioAsset {
   shares: number; // Number of shares owned of this asset based on 33% of initial portfolio value
   percentageChange?: number;
   lastUpdatedAt?: string;
+  assetType: AssetType;
 }
 
 export interface PlayerPortfolio {

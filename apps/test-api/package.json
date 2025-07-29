@@ -27,7 +27,7 @@
     "build": "tsc",
     "postbuild": "mkdir -p dist/redis-scripts && cp src/redis-scripts/find-and-match-players.lua dist/redis-scripts/",
     "create-table": "node --loader ts-node/esm src/scripts/create-table.ts",
-    "dev": "npm run create-table && npm run build && tsc -w & node --watch dist/main.js",
+    "dev": "npm run create-table && tsc -w & node --watch dist/main.js",
     "lint": "eslint src/**/*.ts"
   },
   "devDependencies": {
