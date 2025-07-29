@@ -109,9 +109,6 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
           assetSelectionStartedAt: cachedMatch.assetSelectionStartedAt,
           assetSelectionEndedAt: cachedMatch.assetSelectionEndedAt || '',
           matchStartedAt: cachedMatch.matchStartedAt || '',
-          portfolios: cachedMatch.portfolios
-            ? JSON.parse(cachedMatch.portfolios)
-            : {},
         } as DynamoDBMatchItem;
       }
 
@@ -142,7 +139,6 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
         assetSelectionStartedAt: match.assetSelectionStartedAt,
         assetSelectionEndedAt: match.assetSelectionEndedAt || '',
         matchStartedAt: match.matchStartedAt || '',
-        portfolios: JSON.stringify(match.portfolios || {}),
       });
 
       logger.info({
@@ -290,7 +286,6 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
 
   const transitionMatchToInProgress = async (
     matchId: string,
-    portfolios: Record<string, unknown>,
     matchStartTimeIso: string
   ): Promise<void> => {
     try {
@@ -304,7 +299,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
           TableName: 'WageTable',
           Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
           UpdateExpression:
-            'SET #status = :newStatus, matchStartedAt = :now, portfolios = :portfolios, matchTentativeEndTime = :tentativeEndTime',
+            'SET #status = :newStatus, matchStartedAt = :now, matchTentativeEndTime = :tentativeEndTime',
           ConditionExpression:
             'attribute_exists(PK) AND attribute_exists(SK) AND #status = :expectedStatus',
           ExpressionAttributeNames: {
@@ -314,7 +309,6 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
             ':newStatus': 'in_progress',
             ':expectedStatus': 'asset_selection',
             ':now': matchStartTimeIso,
-            ':portfolios': portfolios,
             ':tentativeEndTime': matchTentativeEndTimeIso,
           },
         })
@@ -369,6 +363,50 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     }
   };
 
+  const setAssetInitialPricing = async (
+    matchId: string,
+    userId: string,
+    assetIndex: number,
+    initialPrice: number,
+    shares: number
+  ): Promise<void> => {
+    try {
+      await dynamodb.send(
+        new UpdateCommand({
+          TableName: 'WageTable',
+          Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
+          UpdateExpression: `SET playerAssets.#userId.assets[${assetIndex}].initialPrice = :initialPrice, playerAssets.#userId.assets[${assetIndex}].shares = :shares`,
+          ExpressionAttributeNames: {
+            '#userId': userId,
+          },
+          ExpressionAttributeValues: {
+            ':initialPrice': initialPrice,
+            ':shares': shares,
+          },
+        })
+      );
+
+      await redis.del(REDIS_KEYS.MATCH(matchId));
+      logger.info({
+        matchId,
+        userId,
+        assetIndex,
+        initialPrice,
+        shares,
+        msg: 'Asset updated with initial price and shares',
+      });
+    } catch (error) {
+      logger.error({
+        error,
+        matchId,
+        userId,
+        assetIndex,
+        msg: 'Error updating asset with price and shares',
+      });
+      throw error;
+    }
+  };
+
   return {
     getMatch,
     persistNewMatch,
@@ -377,5 +415,6 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     persistPlayerReadyStatus,
     transitionMatchToInProgress,
     transitionMatchToAssetSelection,
+    setAssetInitialPricing,
   };
 };

@@ -1,13 +1,18 @@
 import { FastifyInstance } from 'fastify';
-import { TWELVE_DATA_API_BASE_URL } from '../constants.js';
+import {
+  INITIAL_PORTFOLIO_VALUE,
+  REQUIRED_ASSET_COUNT,
+  TWELVE_DATA_API_BASE_URL,
+} from '../constants.js';
 import { ValidationError } from '../errors/index.js';
 import { DynamoDBMatchItem } from '../models/match.js';
-import { AssetType, PlayerAsset } from '../types/match.js';
-import { MatchResult } from '../types/matchmaking.js';
 import {
-  collectUniqueTickers,
-  initializePlayerPortfolios,
-} from '../utils/match-utils.js';
+  AssetType,
+  PlayerAsset,
+  PlayerAssetSelections,
+} from '../types/match.js';
+import { MatchResult } from '../types/matchmaking.js';
+import { collectUniqueTickers } from '../utils/match-utils.js';
 import {
   canPlayerReadyUp,
   validateAssetSelection,
@@ -15,6 +20,48 @@ import {
   validatePlayers,
 } from '../validators/match-validator.js';
 import { broadcastToMatch } from './connection-manager.js';
+
+interface PriceData {
+  [ticker: string]: {
+    price: string;
+  };
+}
+
+const initializeMatchAssetPricing = async (
+  fastify: FastifyInstance,
+  matchId: string,
+  playerAssets: PlayerAssetSelections,
+  priceData: PriceData
+): Promise<void> => {
+  const updatePromises: Promise<void>[] = [];
+
+  for (const [userId, playerData] of Object.entries(playerAssets)) {
+    for (let i = 0; i < playerData.assets.length; i++) {
+      const asset = playerData.assets[i];
+
+      if (!priceData[asset.ticker]?.price) {
+        throw new Error(`Missing price data for ticker: ${asset.ticker}`);
+      }
+
+      const initialPrice = parseFloat(priceData[asset.ticker].price);
+      const shares =
+        INITIAL_PORTFOLIO_VALUE / REQUIRED_ASSET_COUNT / initialPrice;
+
+      // Update each asset with initialPrice and shares
+      const updatePromise = fastify.repositories.match.setAssetInitialPricing(
+        matchId,
+        userId,
+        i,
+        initialPrice,
+        shares
+      );
+
+      updatePromises.push(updatePromise);
+    }
+  }
+
+  await Promise.all(updatePromises);
+};
 
 export const createMatch = async (
   fastify: FastifyInstance,
@@ -61,6 +108,8 @@ export const handleAssetSelection = async (
       ticker,
       selectedAt: new Date().toISOString(),
       assetType: AssetType.STOCK,
+      initialPrice: 0, // Will be set when match starts
+      shares: 0, // Will be set when match starts
     };
 
     await fastify.repositories.match.persistMatchAsset(
@@ -179,7 +228,6 @@ export const handleReadyCheck = async (
         matchId: startedMatch.matchId,
         matchStartedAt: startedMatch.matchStartedAt,
         playerAssets: startedMatch.playerAssets,
-        portfolios: startedMatch.portfolios,
         message: 'Match is starting! Good luck!',
       });
     } else {
@@ -258,16 +306,18 @@ export const handleMatchStart = async (
 
     const fetchedPriceData = await priceApiResponse.json();
     const matchStartTimeIso = new Date().toISOString();
-    const playerPortfolios = initializePlayerPortfolios(
-      existingMatch,
-      fetchedPriceData,
-      matchStartTimeIso
+
+    // Update player assets with initial prices and shares
+    await initializeMatchAssetPricing(
+      fastify,
+      matchId,
+      existingMatch.playerAssets,
+      fetchedPriceData
     );
 
     try {
       await fastify.repositories.match.transitionMatchToInProgress(
         matchId,
-        playerPortfolios,
         matchStartTimeIso
       );
     } catch (error: unknown) {
@@ -275,17 +325,17 @@ export const handleMatchStart = async (
         error instanceof Error &&
         error.name === 'ConditionalCheckFailedException'
       ) {
-        // If portfolios were already set by another process, fetch and return current state
+        // If match was already started by another process, fetch and return current state
         const currentState = await fastify.repositories.match.getMatch(matchId);
-        if (currentState?.portfolios) {
+        if (currentState?.status === 'in_progress') {
           fastify.log.info({
             matchId,
-            msg: 'Race condition: Another process already initialized portfolios',
+            msg: 'Race condition: Another process already started the match',
           });
           return currentState;
         }
         throw new ValidationError(
-          'Failed to update match portfolios - match status changed unexpectedly'
+          'Failed to start match - match status changed unexpectedly'
         );
       }
       throw error;
@@ -298,7 +348,6 @@ export const handleMatchStart = async (
 
     fastify.log.info({
       matchId,
-      portfolios: playerPortfolios,
       msg: 'Match started successfully with initial prices',
     });
 
@@ -335,7 +384,13 @@ export const handleMatchEnd = async (
   fastify: FastifyInstance,
   matchId: string,
   winner: string,
-  gameData: any
+  gameData: unknown
 ) => {
   // TODO: Implement match end logic
+  console.log('Match end not implemented', {
+    fastify,
+    matchId,
+    winner,
+    gameData,
+  });
 };
