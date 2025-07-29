@@ -1,12 +1,12 @@
 export interface DynamoDBAssetItem {
   PK: `ASSET#${'STOCK' | 'CRYPTO' | 'COMMODITY'}`;
-  SK: string; // Typically the symbol for assets
+  SK: string;
   EntityType: 'Asset';
   AssetType: 'STOCK' | 'CRYPTO' | 'COMMODITY';
   Symbol: string;
   name: string;
   currentPrice: number;
-  lastUpdated: string; // ISO 8601 string
+  lastUpdated: string;
   description?: string;
   marketCap?: number;
   volume24h?: number;

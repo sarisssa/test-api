@@ -1,4 +1,4 @@
-import { MatchPortfolios, PlayerAssetSelections } from '../types/match';
+import { PlayerAssetSelections } from '../types/match';
 
 export interface DynamoDBMatchItem {
   PK: `MATCH#${string}`;
@@ -20,8 +20,6 @@ export interface DynamoDBMatchItem {
   matchTentativeEndTime?: string;
   matchEndedAt?: string;
   winner?: string;
-
-  portfolios: MatchPortfolios;
 
   // --- Match-Level Metadata for Price Updates ---
   lastPriceUpdateAt?: string;
