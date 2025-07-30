@@ -1,5 +1,5 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { findAssets, getAssetBySymbol } from '../services/asset.js';
+import { findAssets, getAssetByTicker } from '../services/asset.js';
 import { AssetType } from '../types/match';
 
 export default async function assetRoutes(fastify: FastifyInstance) {
@@ -23,20 +23,20 @@ export default async function assetRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.get('/:symbol', async (request, reply) => {
-    const { symbol } = request.params as { symbol: string };
+  fastify.get('/:ticker', async (request, reply) => {
+    const { ticker } = request.params as { ticker: string };
 
     try {
-      const asset = await getAssetBySymbol(fastify, symbol);
+      const asset = await getAssetByTicker(fastify, ticker);
 
       if (asset) {
         return asset;
       } else {
-        fastify.log.info(`Asset not found: ${symbol}`);
+        fastify.log.info(`Asset not found: ${ticker}`);
         reply.status(404).send({ error: 'Asset not found.' });
       }
     } catch (error) {
-      console.error(`Error in /assets/${symbol} endpoint:`, error);
+      console.error(`Error in /assets/${ticker} endpoint:`, error);
       reply.status(500).send({ error: (error as Error).message });
     }
   });

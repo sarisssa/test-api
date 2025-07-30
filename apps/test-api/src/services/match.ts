@@ -6,11 +6,7 @@ import {
 } from '../constants.js';
 import { ValidationError } from '../errors/index.js';
 import { DynamoDBMatchItem } from '../models/match.js';
-import {
-  AssetType,
-  PlayerAsset,
-  PlayerAssetSelections,
-} from '../types/match.js';
+import { PlayerAsset, PlayerAssetSelections } from '../types/match.js';
 import { MatchResult } from '../types/matchmaking.js';
 import { collectUniqueTickers } from '../utils/match-utils.js';
 import {
@@ -19,6 +15,7 @@ import {
   validateMatchAccess,
   validatePlayers,
 } from '../validators/match-validator.js';
+import { validateTickerSymbol } from './asset.js';
 import { broadcastToMatch } from './connection-manager.js';
 
 interface PriceData {
@@ -101,13 +98,17 @@ export const handleAssetSelection = async (
     const matchData = await fastify.repositories.match.getMatch(matchId);
     const { match } = validateMatchAccess(matchData, userId);
 
+    const { exists, assetType } = await validateTickerSymbol(fastify, ticker);
+    if (!exists || !assetType) {
+      throw new Error(`Invalid ticker: ${ticker}`);
+    }
+
     validateAssetSelection(match, userId, ticker);
 
-    //TODO: Hard code to Stock right now, please add assetType to the payload
     const newAsset: PlayerAsset = {
       ticker,
       selectedAt: new Date().toISOString(),
-      assetType: AssetType.STOCK,
+      assetType,
       initialPrice: 0, // Will be set when match starts
       shares: 0, // Will be set when match starts
     };

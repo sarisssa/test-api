@@ -11,4 +11,5 @@ export const REDIS_KEYS = {
   PLAYER: (userId: string) => `player:${userId}`,
   CONNECTION: (connectionId: string) => `connection:${connectionId}`,
   MATCH: (matchId: string) => `match:${matchId}`,
+  ASSET_TICKER: (ticker: string) => `asset:ticker:${ticker.toUpperCase()}`,
 } as const;

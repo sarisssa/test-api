@@ -26,17 +26,33 @@ export const findAssets = async (
   }
 };
 
-export const getAssetBySymbol = async (
+export const getAssetByTicker = async (
   fastify: FastifyInstance,
-  symbol: string
+  ticker: string
 ): Promise<DynamoDBAssetItem | null> => {
   try {
-    return await fastify.repositories.asset.fetchAssetBySymbol(symbol);
+    return await fastify.repositories.asset.fetchAssetByTickerFromDB(ticker);
   } catch (error) {
     fastify.log.error({
-      symbol,
+      ticker,
       error,
       msg: 'Error in getAssetBySymbol service',
+    });
+    throw error;
+  }
+};
+
+export const validateTickerSymbol = async (
+  fastify: FastifyInstance,
+  ticker: string
+): Promise<{ exists: boolean; assetType: AssetType | null }> => {
+  try {
+    return await fastify.repositories.asset.getAssetDetailsByTicker(ticker);
+  } catch (error) {
+    fastify.log.error({
+      ticker,
+      error,
+      msg: 'Error in validateTickerSymbol service',
     });
     throw error;
   }

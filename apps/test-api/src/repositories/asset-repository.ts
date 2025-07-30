@@ -1,5 +1,6 @@
 import { GetCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { FastifyInstance } from 'fastify';
+import { REDIS_KEYS } from '../constants.js';
 import { DynamoDBAssetItem } from '../models/asset.js';
 import { AssetType } from '../types/match.js';
 
@@ -42,8 +43,8 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
     }
   };
 
-  const fetchAssetBySymbol = async (
-    symbol: string
+  const fetchAssetByTickerFromDB = async (
+    ticker: string
   ): Promise<DynamoDBAssetItem | null> => {
     const assetTypes = ['STOCK', 'CRYPTO', 'COMMODITY'];
 
@@ -54,7 +55,7 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
             TableName: 'WageTable',
             Key: {
               PK: `ASSET#${assetType}`,
-              SK: symbol,
+              SK: ticker,
             },
           })
         );
@@ -65,9 +66,9 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
       } catch (error) {
         logger.error({
           error,
-          symbol,
+          ticker,
           assetType,
-          msg: 'Error fetching asset by symbol',
+          msg: 'Error fetching asset by ticker',
         });
         throw error;
       }
@@ -76,8 +77,81 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
     return null;
   };
 
+  const getAssetDetailsByTicker = async (
+    ticker: string
+  ): Promise<{ exists: boolean; assetType: AssetType | null }> => {
+    const redis = fastify.redis;
+    const cacheKey = REDIS_KEYS.ASSET_TICKER(ticker);
+    const CACHE_TTL = 86400; // 24 hours in seconds
+
+    try {
+      const cachedResult = await redis.get(cacheKey);
+      if (cachedResult) {
+        logger.info({
+          ticker,
+          msg: 'Asset ticker found in Redis cache',
+        });
+
+        if (cachedResult === 'NOT_FOUND') {
+          return { exists: false, assetType: null };
+        }
+
+        if (Object.values(AssetType).includes(cachedResult as AssetType)) {
+          return {
+            exists: true,
+            assetType: cachedResult as AssetType,
+          };
+        }
+
+        logger.warn({
+          ticker,
+          cachedResult,
+          msg: 'Invalid cached asset type, falling back to DynamoDB',
+        });
+      }
+
+      logger.info({
+        ticker,
+        msg: 'Asset ticker not in cache, checking DynamoDB',
+      });
+
+      const asset = await fetchAssetByTickerFromDB(ticker);
+
+      if (asset) {
+        await redis.setex(cacheKey, CACHE_TTL, asset.AssetType);
+        logger.info({
+          ticker,
+          assetType: asset.AssetType,
+          msg: 'Asset ticker found in DynamoDB and cached',
+        });
+
+        return {
+          exists: true,
+          assetType: asset.AssetType as AssetType,
+        };
+      } else {
+        // Cache the negative result (ticker doesn't exist)
+        await redis.setex(cacheKey, CACHE_TTL, 'NOT_FOUND');
+        logger.info({
+          ticker,
+          msg: 'Asset ticker not found in DynamoDB, cached negative result',
+        });
+
+        return { exists: false, assetType: null };
+      }
+    } catch (error) {
+      logger.error({
+        error,
+        ticker,
+        msg: 'Error in lookupTickerWithCache',
+      });
+      throw error;
+    }
+  };
+
   return {
     searchAssets,
-    fetchAssetBySymbol,
+    fetchAssetByTickerFromDB,
+    getAssetDetailsByTicker,
   };
 };
