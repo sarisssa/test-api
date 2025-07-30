@@ -1,16 +1,10 @@
-import { getActiveMatches, saveUpdatedMatches } from './services/dynamo-service.js'
+import { batchUpdateAssetPrices, getActiveMatches } from './services/dynamo-service.js'
 import { fetchCurrentPrices } from './services/price-service.js'
 import { scheduleNextExecution } from './services/sqs-service.js'
-import {
-  getActiveTickersForCurrentMarket,
-  processMatchCompletions,
-  updateMatchPortfolios
-} from './utils/match-processor.js'
+import { getActiveTickersWithTypesForCurrentMarket } from './utils/match-processor.js'
 
 export const handler = async () => {
   try {
-    //TODO: Optmization get watched matches instead (optimization)
-    //TODO: Make a manual call to fetch pricing right when a match hits tentativeEndTime to determine exact winner
     const matches = await getActiveMatches()
 
     if (matches.length === 0) {
@@ -28,9 +22,9 @@ export const handler = async () => {
       }
     }
 
-    const activeTickersArray = getActiveTickersForCurrentMarket(matches)
+    const activeTickersWithTypes = getActiveTickersWithTypesForCurrentMarket(matches)
 
-    if (activeTickersArray.length === 0) {
+    if (activeTickersWithTypes.length === 0) {
       console.log('No active tickers for current market hours - skipping price fetch.')
       return {
         statusCode: 200,
@@ -45,31 +39,23 @@ export const handler = async () => {
       }
     }
 
+    const activeTickersArray = activeTickersWithTypes.map(({ ticker }) => ticker)
     const priceData = await fetchCurrentPrices(activeTickersArray)
 
-    //Changee data model as we no longer need currentPrice
-    const updatedMatches = updateMatchPortfolios(matches, priceData)
+    const priceUpdates = activeTickersWithTypes.map(({ ticker, assetType }) => ({
+      assetType,
+      symbol: ticker,
+      currentPrice: parseFloat(priceData[ticker].price)
+    }))
 
-    const completedMatches = processMatchCompletions(updatedMatches)
-
-    // Filter out completed matches from updatedMatches to avoid duplicates
-    const ongoingMatches = updatedMatches.filter((match) => {
-      const hasEnded =
-        match.matchTentativeEndTime && new Date(match.matchTentativeEndTime) <= new Date()
-      return !hasEnded
-    })
-
-    // Save only ongoing matches (still in_progress) and completed matches
-    await saveUpdatedMatches([...ongoingMatches, ...completedMatches])
+    await batchUpdateAssetPrices(priceUpdates)
 
     return {
       statusCode: 200,
       body: JSON.stringify({
         message: 'Lambda executed successfully with price updates',
         matchesProcessed: matches.length,
-        matchesUpdated: updatedMatches.length,
-        matchesCompleted: completedMatches.length,
-        tickersProcessed: activeTickersArray.length,
+        tickersProcessed: activeTickersWithTypes.length,
         timestamp: new Date().toISOString(),
         nextExecutionScheduled: true
       })
