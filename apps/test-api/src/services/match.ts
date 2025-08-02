@@ -6,7 +6,11 @@ import {
 } from '../constants.js';
 import { ValidationError } from '../errors/index.js';
 import { DynamoDBMatchItem } from '../models/match.js';
-import { PlayerAsset, PlayerAssetSelections } from '../types/match.js';
+import {
+  AssetPriceData,
+  PlayerAsset,
+  PlayerAssetSelections,
+} from '../types/match.js';
 import { MatchResult } from '../types/matchmaking.js';
 import { collectUniqueTickers } from '../utils/match-utils.js';
 import {
@@ -18,17 +22,11 @@ import {
 import { validateTickerSymbol } from './asset.js';
 import { broadcastToMatch } from './connection-manager.js';
 
-interface PriceData {
-  [ticker: string]: {
-    price: string;
-  };
-}
-
 const initializeMatchAssetPricing = async (
   fastify: FastifyInstance,
   matchId: string,
   playerAssets: PlayerAssetSelections,
-  priceData: PriceData
+  assetPriceData: AssetPriceData
 ): Promise<void> => {
   const updatePromises: Promise<void>[] = [];
 
@@ -36,11 +34,11 @@ const initializeMatchAssetPricing = async (
     for (let i = 0; i < playerData.assets.length; i++) {
       const asset = playerData.assets[i];
 
-      if (!priceData[asset.ticker]?.price) {
+      if (!assetPriceData[asset.ticker]?.price) {
         throw new Error(`Missing price data for ticker: ${asset.ticker}`);
       }
 
-      const initialPrice = parseFloat(priceData[asset.ticker].price);
+      const initialPrice = parseFloat(assetPriceData[asset.ticker].price);
       const shares =
         INITIAL_PORTFOLIO_VALUE / REQUIRED_ASSET_COUNT / initialPrice;
 
@@ -313,7 +311,7 @@ export const handleMatchStart = async (
       fastify,
       matchId,
       existingMatch.playerAssets,
-      fetchedPriceData
+      fetchedPriceData as AssetPriceData
     );
 
     try {

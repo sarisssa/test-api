@@ -1,16 +1,5 @@
 import { INITIAL_PORTFOLIO_VALUE, REQUIRED_ASSET_COUNT } from '../constants.js';
-import { DynamoDBMatchItem } from '../models/match.js';
-import {
-  MatchPortfolios,
-  PlayerAsset,
-  PortfolioAsset,
-} from '../types/match.js';
-
-interface PriceData {
-  [ticker: string]: {
-    price: string;
-  };
-}
+import { AssetPriceData, PlayerAsset } from '../types/match.js';
 
 export const collectUniqueTickers = (playerAssets: {
   [userId: string]: { assets: PlayerAsset[] };
@@ -30,14 +19,14 @@ export const calculateAssetShares = (initialPrice: number): number => {
 
 export const processAssetWithPrice = (
   asset: PlayerAsset,
-  priceData: PriceData,
+  assetPriceData: AssetPriceData,
   timestamp: string
-): PortfolioAsset => {
-  if (!priceData[asset.ticker]?.price) {
+) => {
+  if (!assetPriceData[asset.ticker]?.price) {
     throw new Error(`Missing price data for ticker: ${asset.ticker}`);
   }
 
-  const initialPrice = parseFloat(priceData[asset.ticker].price);
+  const initialPrice = parseFloat(assetPriceData[asset.ticker].price);
   const shares = calculateAssetShares(initialPrice);
 
   return {
@@ -48,27 +37,4 @@ export const processAssetWithPrice = (
     shares,
     lastUpdatedAt: timestamp,
   };
-};
-
-export const initializePlayerPortfolios = (
-  match: DynamoDBMatchItem,
-  priceData: PriceData,
-  timestamp: string
-): MatchPortfolios => {
-  const portfolios: MatchPortfolios = {};
-
-  for (const playerId of match.players) {
-    const playerInitialAssets = match.playerAssets[playerId].assets;
-    const processedAssets = playerInitialAssets.map(asset =>
-      processAssetWithPrice(asset, priceData, timestamp)
-    );
-
-    portfolios[playerId] = {
-      initialValue: INITIAL_PORTFOLIO_VALUE,
-      currentValue: INITIAL_PORTFOLIO_VALUE,
-      assets: processedAssets,
-    };
-  }
-
-  return portfolios;
 };

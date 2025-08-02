@@ -20,3 +20,9 @@ export interface PlayerAssetSelection {
 export interface PlayerAssetSelections {
   [userId: string]: PlayerAssetSelection;
 }
+
+export interface AssetPriceData {
+  [ticker: string]: {
+    price: string;
+  };
+}
