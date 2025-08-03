@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import { MATCHMAKING_JOB_QUEUE_LIST } from '../constants.js';
-import { MatchmakingJob } from '../types/matchmaking';
+import { MatchmakingJob } from '../types/matchmaking.js';
 import { handlePlayerCancelled, handlePlayerJoined } from './matchmaking.js';
 
 let workerRedis: Redis | null = null;

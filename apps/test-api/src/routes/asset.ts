@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { findAssets, getAssetByTicker } from '../services/asset.js';
-import { AssetType } from '../types/match';
+import { AssetType } from '../types/match.js';
 
 export default async function assetRoutes(fastify: FastifyInstance) {
   fastify.get('/', async (request: FastifyRequest, reply: FastifyReply) => {

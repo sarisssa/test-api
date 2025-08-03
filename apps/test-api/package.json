@@ -15,11 +15,12 @@
     "@types/uuid": "^10.0.0",
     "fastify": "^4.29.1",
     "fastify-plugin": "^5.0.1",
+    "tsx": "^4.20.3",
     "twilio": "^5.7.3",
     "uuid": "^11.1.0",
+    "wage-shared": "*",
     "zod": "^3.24.1",
-    "zod-to-json-schema": "^3.24.6",
-    "wage-shared": "*"
+    "zod-to-json-schema": "^3.24.6"
   },
   "type": "module",
   "scripts": {
@@ -28,7 +29,7 @@
     "build": "tsc",
     "postbuild": "mkdir -p dist/redis-scripts && cp src/redis-scripts/find-and-match-players.lua dist/redis-scripts/",
     "create-table": "node --loader ts-node/esm src/scripts/create-table.ts",
-    "dev": "npm run create-table && tsc -w & node --watch dist/main.js",
+    "dev": "npm run create-table && tsx watch src/main.ts",
     "lint": "eslint src/**/*.ts",
     "clean": "rm -rf dist"
   },

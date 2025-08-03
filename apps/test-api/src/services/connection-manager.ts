@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import { WebSocket } from 'ws';
 import { WEBSOCKET_OUTGOING_CHANNEL } from '../constants.js';
 import { MatchResult } from '../types/matchmaking.js';

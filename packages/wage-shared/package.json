@@ -3,11 +3,6 @@
   "version": "1.0.0",
   "type": "module",
   "main": "src/index.ts",
-  "types": "dist/index.d.ts",
-  "files": [
-    "dist",
-    "src"
-  ],
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
@@ -18,23 +13,5 @@
   "devDependencies": {
     "@types/node": "^20.19.9",
     "typescript": "^5.4.4"
-  },
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    },
-    "./types": {
-      "import": "./dist/types/index.js",
-      "types": "./dist/types/index.d.ts"
-    },
-    "./utils": {
-      "import": "./dist/utils/index.js",
-      "types": "./dist/utils/index.d.ts"
-    },
-    "./constants": {
-      "import": "./dist/constants/index.js",
-      "types": "./dist/constants/index.d.ts"
-    }
   }
 }

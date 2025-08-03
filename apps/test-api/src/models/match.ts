@@ -1,4 +1,4 @@
-import { PlayerAssetSelections } from '../types/match';
+import { PlayerAssetSelections } from '../types/match.js';
 
 export interface DynamoDBMatchItem {
   PK: `MATCH#${string}`;

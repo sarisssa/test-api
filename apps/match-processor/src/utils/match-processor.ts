@@ -1,4 +1,4 @@
-import { AssetType, Match } from '../types'
+import { AssetType, Match } from '../types.js'
 import { filterTickersByMarketHours } from './market-hours.js'
 
 export const getAllUniqueTickersWithTypes = (

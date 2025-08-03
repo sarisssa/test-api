@@ -1,7 +1,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { v4 as uuidv4 } from 'uuid';
-import { AssetType } from '../types/match';
+import { AssetType } from '../types/match.js';
 
 const matchId = uuidv4();
 const now = new Date();
