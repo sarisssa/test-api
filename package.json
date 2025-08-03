@@ -1,13 +1,33 @@
 {
-  "name": "test-api",
+  "name": "wage-workspace",
   "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
     "prepare": "husky",
-    "lint-staged": "lint-staged"
+    "lint-staged": "lint-staged",
+    "build": "npm run build --workspaces --if-present",
+    "build:shared": "npm run build -w wage-shared",
+    "build:asset-manager": "npm run build -w asset-manager",
+    "build:test-api": "npm run build -w test-api",
+    "build:match-processor": "npm run build -w match-processor",
+    "start": "npm run start --workspaces --if-present",
+    "dev": "npm run dev --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "clean": "npm run clean --workspaces --if-present"
   },
   "lint-staged": {
     "*.{yml,yaml}": [
       "prettier --write"
+    ],
+    "*.{ts,tsx,js,jsx}": [
+      "prettier --write",
+      "eslint --fix"
     ]
   },
   "prettier": {
@@ -22,6 +42,8 @@
   "devDependencies": {
     "husky": "^9.1.7",
     "lint-staged": "^16.1.2",
-    "prettier": "^3.6.2"
+    "prettier": "^3.6.2",
+    "typescript": "^5.4.4",
+    "@types/node": "^20.19.9"
   }
 }
