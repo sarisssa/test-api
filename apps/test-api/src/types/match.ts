@@ -10,6 +10,7 @@ export interface PlayerAsset {
   assetType: AssetType;
   initialPrice: number;
   shares: number;
+  endPrice?: number;
 }
 
 export interface PlayerAssetSelection {
