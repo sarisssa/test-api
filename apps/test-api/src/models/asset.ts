@@ -1,5 +1,5 @@
 export interface DynamoDBAssetItem {
-  PK: `ASSET#${'STOCK' | 'CRYPTO' | 'COMMODITY'}`;
+  PK: `ASSET#${string}`;
   SK: string;
   EntityType: 'Asset';
   AssetType: 'STOCK' | 'CRYPTO' | 'COMMODITY';
