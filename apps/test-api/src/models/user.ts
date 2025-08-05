@@ -8,9 +8,9 @@ export interface DynamoDBUserItem {
   phoneNumber: string;
   username?: string;
   emailAddress?: string;
-
   createdAt: string;
   lastLoggedIn?: string;
+  experiencePoints: number;
   stats: {
     totalMatches: number;
     wins: number;
@@ -24,6 +24,5 @@ export interface DynamoDBUserItem {
   profile?: {
     avatar?: string;
     bio?: string;
-    country?: string;
   };
 }
