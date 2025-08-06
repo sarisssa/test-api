@@ -13,6 +13,7 @@
     "@fastify/sensible": "^5.5.0",
     "@fastify/websocket": "^8.2.0",
     "@types/uuid": "^10.0.0",
+    "dotenv": "^16.6.1",
     "fastify": "^4.29.1",
     "fastify-plugin": "^5.0.1",
     "tsx": "^4.20.3",
