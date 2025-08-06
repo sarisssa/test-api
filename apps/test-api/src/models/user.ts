@@ -15,14 +15,10 @@ export interface DynamoDBUserItem {
     totalMatches: number;
     wins: number;
     losses: number;
-    currentStreak: number;
-    longestStreak: number;
-    rank: 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
-    level: number;
   };
 
   profile?: {
-    avatar?: string;
+    profilePictureUrl?: string;
     bio?: string;
   };
 }
