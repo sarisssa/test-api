@@ -22,3 +22,19 @@ export interface DynamoDBUserItem {
     bio?: string;
   };
 }
+
+export interface UserPublicProfile {
+  phoneNumber: string;
+  username?: string;
+  emailAddress?: string;
+  experiencePoints: number;
+  stats: {
+    totalMatches: number;
+    wins: number;
+    losses: number;
+  };
+  profile?: {
+    profilePictureUrl?: string;
+    bio?: string;
+  };
+}
