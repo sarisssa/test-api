@@ -73,6 +73,8 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx_errors" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "alb_4xx_errors" {
+  count = var.environment == "prd" ? 1 : 0
+  
   alarm_name          = "${var.project_name}-alb-4xx-errors-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
