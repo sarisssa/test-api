@@ -9,7 +9,7 @@ resource "aws_vpc" "main_vpc" {
 }
 
 # --- Public Subnets ---
-resource "aws_subnet" "public_us_west_1a" {
+resource "aws_subnet" "public_us_east_1a" {
   vpc_id            = aws_vpc.main_vpc.id
   cidr_block        = cidrsubnet(var.vpc_cidr, 8, 0)
   availability_zone = "${var.aws_region}a"
@@ -20,7 +20,7 @@ resource "aws_subnet" "public_us_west_1a" {
   }
 }
 
-resource "aws_subnet" "public_us_west_1c" {
+resource "aws_subnet" "public_us_east_1c" {
   vpc_id                  = aws_vpc.main_vpc.id
   cidr_block              = cidrsubnet(var.vpc_cidr, 8, 1)
   availability_zone       = "${var.aws_region}c"
@@ -33,7 +33,7 @@ resource "aws_subnet" "public_us_west_1c" {
 }
 
 # --- Private Subnets ---
-resource "aws_subnet" "private_us_west_1a" {
+resource "aws_subnet" "private_us_east_1a" {
   vpc_id            = aws_vpc.main_vpc.id
   cidr_block        = cidrsubnet(var.vpc_cidr, 8, 2)
   availability_zone = "${var.aws_region}a"
@@ -44,7 +44,7 @@ resource "aws_subnet" "private_us_west_1a" {
   }
 }
 
-resource "aws_subnet" "private_us_west_1c" {
+resource "aws_subnet" "private_us_east_1c" {
   vpc_id            = aws_vpc.main_vpc.id
   cidr_block        = cidrsubnet(var.vpc_cidr, 8, 3)
   availability_zone = "${var.aws_region}c"
@@ -73,7 +73,7 @@ resource "aws_eip" "nat_eip" {
 
 resource "aws_nat_gateway" "nat" {
   allocation_id = aws_eip.nat_eip.id
-  subnet_id     = aws_subnet.public_us_west_1a.id
+  subnet_id     = aws_subnet.public_us_east_1a.id
 
   tags = {
     Name = "${var.project_name}-${var.environment}-nat-gw"
@@ -141,22 +141,22 @@ resource "aws_route_table" "public_rt" {
 }
 
 # --- Route Table Associations ---
-resource "aws_route_table_association" "private_us_west_1a_association" {
-  subnet_id      = aws_subnet.private_us_west_1a.id
+resource "aws_route_table_association" "private_us_east_1a_association" {
+  subnet_id      = aws_subnet.private_us_east_1a.id
   route_table_id = aws_route_table.private_rt.id
 }
 
-resource "aws_route_table_association" "private_us_west_1c_association" {
-  subnet_id      = aws_subnet.private_us_west_1c.id
+resource "aws_route_table_association" "private_us_east_1c_association" {
+  subnet_id      = aws_subnet.private_us_east_1c.id
   route_table_id = aws_route_table.private_rt.id
 }
 
-resource "aws_route_table_association" "public_us_west_1a_association" {
-  subnet_id      = aws_subnet.public_us_west_1a.id
+resource "aws_route_table_association" "public_us_east_1a_association" {
+  subnet_id      = aws_subnet.public_us_east_1a.id
   route_table_id = aws_route_table.public_rt.id
 }
 
-resource "aws_route_table_association" "public_us_west_1c_association" {
-  subnet_id      = aws_subnet.public_us_west_1c.id
+resource "aws_route_table_association" "public_us_east_1c_association" {
+  subnet_id      = aws_subnet.public_us_east_1c.id
   route_table_id = aws_route_table.public_rt.id
 }

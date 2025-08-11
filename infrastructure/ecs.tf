@@ -67,8 +67,8 @@ resource "aws_iam_role_policy" "ecs_task_s3_policy" {
           "s3:ListBucket"
         ],
         Resource = [
-          aws_s3_bucket.avatar_profiles.arn,
-          "${aws_s3_bucket.avatar_profiles.arn}/*"
+          aws_s3_bucket.profile_images.arn,
+          "${aws_s3_bucket.profile_images.arn}/*"
         ]
       }
     ]
@@ -192,7 +192,7 @@ resource "aws_lb" "backend_alb" {
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.backend_alb_sg.id]
-  subnets            = [aws_subnet.public_us_west_1a.id, aws_subnet.public_us_west_1c.id]
+  subnets            = [aws_subnet.public_us_east_1a.id, aws_subnet.public_us_east_1c.id]
 
   tags = {
     Name = "${var.project_name}-backend-alb-${var.environment}"
@@ -351,7 +351,7 @@ resource "aws_ecs_service" "backend_service" {
   }
 
   network_configuration {
-    subnets          = [aws_subnet.private_us_west_1a.id, aws_subnet.private_us_west_1c.id]
+    subnets          = [aws_subnet.private_us_east_1a.id, aws_subnet.private_us_east_1c.id]
     security_groups  = [aws_security_group.backend_fargate_sg.id]
     assign_public_ip = false
   }
