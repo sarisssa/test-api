@@ -9,14 +9,14 @@ terraform {
   }
 
   #Make this dynamic based on the environment
-  backend "s3" {
-    bucket         = "wage-terraform-state-prd-us-west-1"
-    key            = "terraform.tfstate"
-    region         = "us-west-1"
-    dynamodb_table = "wage-terraform-state-lock-prd"
-    encrypt        = "true"
-    acl            = "private"
-  }
+ backend "s3" {
+       bucket         = "wage-terraform-state-dev-us-east-1"
+       key            = "terraform.tfstate"
+       region         = "us-east-1"
+       dynamodb_table = "wage-terraform-state-lock-dev"
+       encrypt        = true
+       acl            = "private"
+     }
 
   required_version = ">= 1.0.0"
 }
