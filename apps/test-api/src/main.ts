@@ -13,6 +13,8 @@ import assetRoutes from './routes/asset.js';
 import authRoutes from './routes/auth.js';
 import healthRoutes from './routes/health.js';
 import matchGatewayRoutes from './routes/match-gateway.js';
+import researchWebSocketRoutes from './routes/research-websocket.js';
+import userRoutes from './routes/user.js';
 import { startMatchmakingWorker } from './services/matchmaking-worker.js';
 import { initMatchmaking } from './services/matchmaking.js';
 import { initializePhoneHashSalt } from './utils/phone-utils.js';
@@ -57,8 +59,10 @@ async function buildApp(): Promise<FastifyInstance> {
 
   await fastify.register(healthRoutes);
   await fastify.register(matchGatewayRoutes, { prefix: '/match-gateway' });
+  await fastify.register(researchWebSocketRoutes);
   await fastify.register(assetRoutes, { prefix: '/assets' });
   await fastify.register(authRoutes, { prefix: '/auth' });
+  await fastify.register(userRoutes, { prefix: '/user' });
 
   return fastify;
 }
