@@ -95,6 +95,8 @@ jobs:
 
       - name: Terraform Init and Apply
         working-directory: infrastructure
+        env:
+          TF_VAR_twelve_data_api_key: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: |
           terraform init
           terraform apply -var-file=environments/${{ env.ENV_NAME }}.tfvars -auto-approve

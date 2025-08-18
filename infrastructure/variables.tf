@@ -366,3 +366,9 @@ variable "lambda_deployment_package" {
   default     = ""
 }
 
+variable "twelve_data_api_key" {
+  description = "API key for Twelve Data financial API"
+  type        = string
+  sensitive   = true
+}
+

@@ -317,6 +317,10 @@ resource "aws_ecs_task_definition" "backend_task" {
         {
           name  = "PORT"
           value = "3000"
+        },
+        {
+          name  = "TWELVE_DATA_API_KEY"
+          value = var.twelve_data_api_key
         }
       ]
       healthCheck = {
