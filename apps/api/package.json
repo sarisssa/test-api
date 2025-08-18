@@ -1,5 +1,5 @@
 {
-  "name": "test-api",
+  "name": "api",
   "version": "0.1.0",
   "dependencies": {
     "@aws-sdk/client-apigatewaymanagementapi": "^3.844.0",

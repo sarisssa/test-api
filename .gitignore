@@ -16,3 +16,5 @@ crash.log
 
 # Ignore Infracost directory
 .infracost/
+
+lambda-placeholder.zip

@@ -11,7 +11,7 @@ ENV="${1:-dev}"
 # IMPORTANT: Base names and region. The 'env' variable will be appended.
 BASE_S3_BUCKET_NAME="wage-terraform-state"
 BASE_DYNAMODB_TABLE_NAME="wage-terraform-state-lock"
-AWS_REGION="us-west-1" # Or your desired region (e.g., us-west-2, eu-west-1)
+AWS_REGION="us-east-1" # Or your desired region (e.g., us-east-2, eu-east-1)
 
 # Derived names based on the environment
 S3_BUCKET_NAME="${BASE_S3_BUCKET_NAME}-${ENV}-${AWS_REGION}"
