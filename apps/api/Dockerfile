@@ -4,12 +4,15 @@ WORKDIR /app
 
 # Copy package files and install ALL dependencies
 COPY package*.json ./
+COPY apps/api/package.json ./apps/api/
+COPY packages/wage-shared/package.json ./packages/wage-shared/
 RUN npm ci
 
 # Copy the rest of the source code
 COPY . .
 
 # Build the TypeScript code
+WORKDIR /app/apps/api
 RUN npm run build
 
 # Stage 2: Production Runner
@@ -21,10 +24,13 @@ RUN apk add --no-cache curl
 
 # Copy package files and install ONLY production dependencies
 COPY package*.json ./
+COPY apps/api/package.json ./apps/api/
+COPY packages/wage-shared/package.json ./packages/wage-shared/
 RUN npm ci --only=production --omit=dev
 
 # Copy the built application and package.json from the builder stage
-COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/apps/api/dist ./apps/api/dist
+WORKDIR /app/apps/api
 
 EXPOSE 3000
 

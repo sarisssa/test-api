@@ -83,7 +83,8 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           push: true
-          context: ${{ env.WORKING_DIRECTORY }}
+          context: .
+          file: ${{ env.WORKING_DIRECTORY }}/Dockerfile
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.run_id }}
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tags.outputs.timestamp }}-${{ steps.tags.outputs.sha_short }}
