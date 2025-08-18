@@ -8,7 +8,7 @@
     "apps/*"
   ],
   "scripts": {
-    "prepare": "husky",
+    "prepare": "npx --yes husky",
     "lint-staged": "lint-staged",
     "build": "npm run build --workspaces --if-present",
     "build:shared": "npm run build -w wage-shared",
