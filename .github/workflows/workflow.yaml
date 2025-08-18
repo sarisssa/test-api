@@ -10,9 +10,9 @@ on:
       - main
 
 env:
-  AWS_REGION: us-west-1
+  AWS_REGION: us-east-1
   ECR_REPOSITORY: wage-backend-ecr
-  WORKING_DIRECTORY: apps/test-api
+  WORKING_DIRECTORY: apps/api
   ECS_CONTAINER_NAME: wage-backend-api
   ENV_NAME: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && 'prd') || 'dev' }}
 
@@ -59,7 +59,7 @@ jobs:
         id: npm-cache
         with:
           path: ${{ steps.npm-cache-dir.outputs.dir }}
-          key: ${{ runner.os }}-npm-${{ hashFiles('apps/test-api/package-lock.json') }}
+          key: ${{ runner.os }}-npm-${{ hashFiles('apps/api/package-lock.json') }}
 
       - name: Install dependencies
         run: npm ci
