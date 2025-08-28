@@ -96,6 +96,36 @@ resource "aws_iam_role_policy" "ecs_task_exec_policy" {
   })
 }
 
+resource "aws_iam_role_policy" "ecs_task_dynamodb_policy" {
+  name = "${var.project_name}-ecs-task-dynamodb-policy-${var.environment}"
+  role = aws_iam_role.ecs_task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Query",
+          "dynamodb:Scan",
+          "dynamodb:BatchGetItem",
+          "dynamodb:BatchWriteItem",
+          "dynamodb:DescribeTable",
+          "dynamodb:ListTables"
+        ],
+        Resource = [
+          aws_dynamodb_table.app_table.arn,
+          "${aws_dynamodb_table.app_table.arn}/*"
+        ]
+      }
+    ]
+  })
+}
+
 # resource "aws_iam_role_policy" "ecs_task_secrets_policy" {
 #   name = "${var.project_name}-ecs-task-secrets-policy-${var.environment}"
 #   role = aws_iam_role.ecs_task_role.id
@@ -211,9 +241,9 @@ resource "aws_lb_target_group" "backend_tg" {
     protocol            = "HTTP"
     matcher             = "200"
     interval            = 30
-    timeout             = 5
+    timeout             = 10
     healthy_threshold   = 2
-    unhealthy_threshold = 2
+    unhealthy_threshold = 5
   }
 
   tags = {
@@ -323,36 +353,44 @@ resource "aws_ecs_task_definition" "backend_task" {
           value = var.twelve_data_api_key
         },
         {
-    name  = "JWT_SECRET"
-    value = var.jwt_secret
-  },
-  {
-    name  = "TWILIO_ACCOUNT_SID"
-    value = var.twilio_account_sid
-  },
-  {
-    name  = "TWILIO_AUTH_TOKEN"
-    value = var.twilio_auth_token
-  },
-  {
-    name  = "TWILIO_VERIFY_SERVICE_SID"
-    value = var.twilio_verify_service_sid
-  },
-  {
-    name  = "PHONE_HASH_SALT"
-    value = var.phone_hash_salt
-  },
-  {
-    name  = "REDIS_URL"
-    value = "redis://${aws_elasticache_replication_group.redis.primary_endpoint_address}:${aws_elasticache_replication_group.redis.port}"
-  },
+          name  = "JWT_SECRET"
+          value = var.jwt_secret
+        },
+        {
+          name  = "TWILIO_ACCOUNT_SID"
+          value = var.twilio_account_sid
+        },
+        {
+          name  = "TWILIO_AUTH_TOKEN"
+          value = var.twilio_auth_token
+        },
+        {
+          name  = "TWILIO_VERIFY_SERVICE_SID"
+          value = var.twilio_verify_service_sid
+        },
+        {
+          name  = "PHONE_HASH_SALT"
+          value = var.phone_hash_salt
+        },
+        {
+          name  = "REDIS_URL"
+          value = "redis://${aws_elasticache_replication_group.redis.primary_endpoint_address}:${aws_elasticache_replication_group.redis.port}"
+        },
+        {
+          name  = "DYNAMODB_REGION"
+          value = var.aws_region
+        },
+        {
+          name  = "AWS_REGION"
+          value = var.aws_region
+        }
       ]
       healthCheck = {
         command     = ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
         interval    = 30
-        timeout     = 5
-        retries     = 3
-        startPeriod = 60
+        timeout     = 10
+        retries     = 5
+        startPeriod = 120
       }
     }
   ])
@@ -396,7 +434,7 @@ resource "aws_ecs_service" "backend_service" {
   }
 
   deployment_maximum_percent         = 200
-  deployment_minimum_healthy_percent = 100
+  deployment_minimum_healthy_percent = 50
 
   tags = {
     Name    = "${var.project_name}-backend-service-${var.environment}"
