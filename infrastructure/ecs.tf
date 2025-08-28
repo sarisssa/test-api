@@ -344,7 +344,7 @@ resource "aws_ecs_task_definition" "backend_task" {
   },
   {
     name  = "REDIS_URL"
-    value = "redis://${aws_elasticache_replication_group.redis.configuration_endpoint_address}:${aws_elasticache_replication_group.redis.port}"
+    value = "redis://${aws_elasticache_replication_group.redis.primary_endpoint_address}:${aws_elasticache_replication_group.redis.port}"
   },
       ]
       healthCheck = {

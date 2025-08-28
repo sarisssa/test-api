@@ -66,7 +66,7 @@ resource "aws_elasticache_replication_group" "redis" {
 
 output "redis_endpoint" {
   description = "Redis cluster endpoint"
-  value       = aws_elasticache_replication_group.redis.configuration_endpoint_address
+  value       = aws_elasticache_replication_group.redis.primary_endpoint_address
 }
 
 output "redis_port" {
