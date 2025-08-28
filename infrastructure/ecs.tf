@@ -321,7 +321,31 @@ resource "aws_ecs_task_definition" "backend_task" {
         {
           name  = "TWELVE_DATA_API_KEY"
           value = var.twelve_data_api_key
-        }
+        },
+        {
+    name  = "JWT_SECRET"
+    value = var.jwt_secret
+  },
+  {
+    name  = "TWILIO_ACCOUNT_SID"
+    value = var.twilio_account_sid
+  },
+  {
+    name  = "TWILIO_AUTH_TOKEN"
+    value = var.twilio_auth_token
+  },
+  {
+    name  = "TWILIO_VERIFY_SERVICE_SID"
+    value = var.twilio_verify_service_sid
+  },
+  {
+    name  = "PHONE_HASH_SALT"
+    value = var.phone_hash_salt
+  },
+  {
+    name  = "REDIS_URL"
+    value = "redis://${aws_elasticache_replication_group.redis.configuration_endpoint_address}:${aws_elasticache_replication_group.redis.port}"
+  },
       ]
       healthCheck = {
         command     = ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]

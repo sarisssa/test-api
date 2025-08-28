@@ -360,6 +360,36 @@ variable "twelve_data_api_key" {
   sensitive   = true
 }
 
+variable "jwt_secret" {
+  description = "JWT secret for token signing"
+  type        = string
+  sensitive   = true
+}
+
+variable "twilio_account_sid" {
+  description = "Twilio Account SID"
+  type        = string
+  sensitive   = true
+}
+
+variable "twilio_auth_token" {
+  description = "Twilio Auth Token"
+  type        = string
+  sensitive   = true
+}
+
+variable "twilio_verify_service_sid" {
+  description = "Twilio Verify Service SID"
+  type        = string
+  sensitive   = true
+}
+
+variable "phone_hash_salt" {
+  description = "Salt for phone number hashing"
+  type        = string
+  sensitive   = true
+}
+
 variable "lambda_deployment_package" {
   description = "Path to the Lambda deployment package (zip file). If empty, uses placeholder."
   type        = string

@@ -96,6 +96,11 @@ jobs:
       - name: Terraform Init and Apply
         working-directory: infrastructure
         env:
+          TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
+          TF_VAR_twilio_account_sid: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TF_VAR_twilio_auth_token: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TF_VAR_twilio_verify_service_sid: ${{ secrets.TWILIO_VERIFY_SERVICE_SID }}
+          TF_VAR_phone_hash_salt: ${{ secrets.PHONE_HASH_SALT }}
           TF_VAR_twelve_data_api_key: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: |
           terraform init
