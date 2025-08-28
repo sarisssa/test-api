@@ -18,3 +18,5 @@ crash.log
 .infracost/
 
 lambda-placeholder.zip
+
+**/*.tsbuildinfo
