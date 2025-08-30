@@ -118,8 +118,8 @@ resource "aws_iam_role_policy" "ecs_task_dynamodb_policy" {
           "dynamodb:ListTables"
         ],
         Resource = [
-          aws_dynamodb_table.app_table.arn,
-          "${aws_dynamodb_table.app_table.arn}/*"
+          aws_dynamodb_table.main.arn,
+          "${aws_dynamodb_table.main.arn}/*"
         ]
       }
     ]
