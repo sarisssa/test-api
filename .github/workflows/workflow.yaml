@@ -103,7 +103,7 @@ jobs:
           TF_VAR_phone_hash_salt: ${{ secrets.PHONE_HASH_SALT }}
           TF_VAR_twelve_data_api_key: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: |
-          terraform init
+          terraform init -backend-config="environments/${{ env.ENV_NAME }}.hcl"
           terraform apply -var-file=environments/${{ env.ENV_NAME }}.tfvars -auto-approve
 
       - name: Download Task Definition
