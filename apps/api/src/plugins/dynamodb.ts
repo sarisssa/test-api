@@ -12,21 +12,8 @@ declare module 'fastify' {
 }
 
 async function dynamodbPlugin(fastify: FastifyInstance) {
-  // For local development (when DYNAMODB_URL is set), use LocalStack
-  // For production (when DYNAMODB_URL is not set), use AWS DynamoDB
-  const isLocalDevelopment =
-    fastify.config.DYNAMODB_URL &&
-    fastify.config.DYNAMODB_URL.includes('localhost');
-
   const dynamodbClient = new DynamoDBClient({
     region: fastify.config.DYNAMODB_REGION,
-    ...(isLocalDevelopment && {
-      endpoint: fastify.config.DYNAMODB_URL,
-      credentials: {
-        accessKeyId: 'test',
-        secretAccessKey: 'test',
-      },
-    }),
   });
 
   const dynamodb = DynamoDBDocumentClient.from(dynamodbClient);

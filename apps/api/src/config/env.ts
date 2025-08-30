@@ -21,7 +21,6 @@ export const envSchema: FastifyEnvOptions['schema'] = {
     },
     DYNAMODB_URL: {
       type: 'string',
-      default: 'http://localhost:4566', // LocalStack endpoint
     },
     TWELVE_DATA_API_KEY: {
       type: 'string',
