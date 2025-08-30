@@ -23,6 +23,8 @@ fi
 TF_ENV="$1"
 TF_CMD=${2:-plan}  # Default to 'plan' if no command provided
 VAR_FILE="environments/${TF_ENV}.tfvars"
+VAR_FILE_LOCAL="environments/${TF_ENV}.local.tfvars"
+BACKEND_CONFIG="./environments/${TF_ENV}.hcl"
 
 case "$TF_ENV" in
     dev|prd) ;;
@@ -47,6 +49,22 @@ if [ ! -f "$VAR_FILE" ]; then
     exit 1
 fi
 
+if [ ! -f "$BACKEND_CONFIG" ]; then
+    echo "Error: Backend config file '${BACKEND_CONFIG}' not found."
+    exit 1
+fi
+
+if [ "$TF_CMD" == "init" ]; then
+    echo "Initializing terraform with backend config: ${BACKEND_CONFIG}"
+    terraform init -backend-config="$BACKEND_CONFIG" -migrate-state
+    exit 0
+fi
+
+if [ ! -f "$VAR_FILE_LOCAL" ]; then
+    echo "Error: Local variable file '${VAR_FILE_LOCAL}' not found."
+    exit 1
+fi
+
 # Add confirmation for destructive commands
 if [ "$TF_CMD" == "apply" ] || [ "$TF_CMD" == "destroy" ]; then
     read -p "Are you sure you want to run terraform ${TF_CMD} in ${TF_ENV}? (y/N) " -n 1 -r
@@ -57,10 +75,8 @@ if [ "$TF_CMD" == "apply" ] || [ "$TF_CMD" == "destroy" ]; then
     fi
 fi
 
-# Run Terraform command
-terraform ${TF_CMD} -var-file="$VAR_FILE"
+# Run Terraform command with multiple var files
+terraform ${TF_CMD} -var-file="$VAR_FILE" -var-file="$VAR_FILE_LOCAL"
 
 
-# ${variables.ENV} // dev or prd
-
-# terraform plan -var-file="${variables.ENV}.tfvars"
+    

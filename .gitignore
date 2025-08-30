@@ -20,3 +20,5 @@ crash.log
 lambda-placeholder.zip
 
 **/*.tsbuildinfo
+
+*.local.tfvars
