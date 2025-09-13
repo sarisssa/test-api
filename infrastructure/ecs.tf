@@ -114,13 +114,19 @@ resource "aws_iam_role_policy" "ecs_task_dynamodb_policy" {
           "dynamodb:Scan",
           "dynamodb:BatchGetItem",
           "dynamodb:BatchWriteItem",
-          "dynamodb:DescribeTable",
-          "dynamodb:ListTables"
+          "dynamodb:DescribeTable"
         ],
         Resource = [
           aws_dynamodb_table.main.arn,
           "${aws_dynamodb_table.main.arn}/*"
         ]
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "dynamodb:ListTables"
+        ],
+        Resource = "*"
       }
     ]
   })
