@@ -1,5 +1,5 @@
 import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb'
-import { Match } from '../types'
+import { Match } from '../types.js'
 import { ddb } from './aws-clients.js'
 
 const WAGE_TABLE_NAME = process.env.WAGE_TABLE_NAME || 'WageTable'

@@ -42,20 +42,64 @@ export const handler = async () => {
     const activeTickersArray = activeTickersWithTypes.map(({ ticker }) => ticker)
     const priceData = await fetchCurrentPrices(activeTickersArray)
 
-    const priceUpdates = activeTickersWithTypes.map(({ ticker, assetType }) => ({
-      assetType,
-      symbol: ticker,
-      currentPrice: parseFloat(priceData[ticker].price)
-    }))
+    const priceProcessingResult = activeTickersWithTypes.reduce(
+      (
+        acc,
+        { ticker, assetType }
+      ) => {
+        const tickerData = priceData[ticker]
 
-    await batchUpdateAssetPrices(priceUpdates)
+        if (!tickerData || typeof tickerData.price !== 'string') {
+          acc.skipped.push(ticker)
+          return acc
+        }
+
+        const parsedPrice = Number.parseFloat(tickerData.price)
+        if (Number.isNaN(parsedPrice)) {
+          console.warn(`Price for ${ticker} could not be parsed as a number, skipping.`)
+          acc.skipped.push(ticker)
+          return acc
+        }
+
+        acc.updates.push({
+          assetType,
+          symbol: ticker,
+          currentPrice: parsedPrice
+        })
+
+        return acc
+      },
+      {
+        updates: [] as Array<{
+          assetType: 'STOCK' | 'CRYPTO' | 'COMMODITY'
+          symbol: string
+          currentPrice: number
+        }>,
+        skipped: [] as string[]
+      }
+    )
+
+    if (priceProcessingResult.skipped.length > 0) {
+      console.warn(
+        `Skipping ${priceProcessingResult.skipped.length} tickers with missing or invalid price data: ${priceProcessingResult.skipped.join(
+          ', '
+        )}`
+      )
+    }
+
+    if (priceProcessingResult.updates.length === 0) {
+      console.warn('No valid price updates found after validation - skipping DynamoDB update.')
+    } else {
+      await batchUpdateAssetPrices(priceProcessingResult.updates)
+    }
 
     return {
       statusCode: 200,
       body: JSON.stringify({
         message: 'Lambda executed successfully with price updates',
         matchesProcessed: matches.length,
-        tickersProcessed: activeTickersWithTypes.length,
+        tickersProcessed: priceProcessingResult.updates.length,
+        tickersSkipped: priceProcessingResult.skipped.length,
         timestamp: new Date().toISOString(),
         nextExecutionScheduled: true
       })

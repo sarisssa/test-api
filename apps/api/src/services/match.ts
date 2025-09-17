@@ -292,18 +292,85 @@ export const handleMatchStart = async (
     const priceApiResponse = await fetch(
       `${TWELVE_DATA_API_BASE_URL}/price?symbol=${commaSeparatedTickerSymbols}&apikey=${fastify.config.TWELVE_DATA_API_KEY}`
     );
+    const rawPriceBody = await priceApiResponse.text();
 
     if (!priceApiResponse.ok) {
       fastify.log.error({
         matchId,
         status: priceApiResponse.status,
         statusText: priceApiResponse.statusText,
+        body: rawPriceBody,
         msg: 'Failed to fetch prices from Twelve Data',
       });
       throw new Error(`Failed to fetch prices: ${priceApiResponse.statusText}`);
     }
 
-    const fetchedPriceData = await priceApiResponse.json();
+    let parsedPricePayload: unknown = {};
+    try {
+      parsedPricePayload = rawPriceBody ? JSON.parse(rawPriceBody) : {};
+    } catch (parseError) {
+      fastify.log.error({
+        matchId,
+        error: parseError,
+        rawPriceBody,
+        msg: 'Failed to parse Twelve Data response',
+      });
+      throw new Error('Failed to parse price data from Twelve Data');
+    }
+
+    if (
+      parsedPricePayload &&
+      typeof parsedPricePayload === 'object' &&
+      ('code' in parsedPricePayload ||
+        ('status' in parsedPricePayload &&
+          (parsedPricePayload as Record<string, unknown>).status === 'error'))
+    ) {
+      fastify.log.error({
+        matchId,
+        body: parsedPricePayload,
+        msg: 'Twelve Data returned an error payload',
+      });
+      throw new Error('Failed to fetch prices: Twelve Data returned an error payload');
+    }
+
+    const missingTickers = uniqueTickers.filter(ticker => {
+      const tickerData = (parsedPricePayload as Record<string, unknown>)[ticker];
+
+      if (
+        tickerData &&
+        typeof tickerData === 'object' &&
+        'price' in tickerData &&
+        typeof (tickerData as Record<string, unknown>).price === 'string'
+      ) {
+        return false;
+      }
+
+      if (
+        tickerData &&
+        typeof tickerData === 'object' &&
+        (tickerData as Record<string, unknown>).status === 'error'
+      ) {
+        fastify.log.error({
+          matchId,
+          ticker,
+          body: tickerData,
+          msg: 'Twelve Data returned an error for ticker',
+        });
+      }
+
+      return true;
+    });
+
+    if (missingTickers.length > 0) {
+      fastify.log.error({
+        matchId,
+        missingTickers,
+        msg: 'Missing price data for tickers',
+      });
+      throw new Error(`Missing price data for tickers: ${missingTickers.join(', ')}`);
+    }
+
+    const fetchedPriceData = parsedPricePayload as AssetPriceData;
     const matchStartTimeIso = new Date().toISOString();
 
     // Update player assets with initial prices and shares
