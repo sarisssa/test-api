@@ -1,0 +1,28 @@
+{
+  "name": "ws-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/handlers/websocket.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "serverless offline start",
+    "deploy": "npm run build && serverless deploy --stage local",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.846.0",
+    "@aws-sdk/client-dynamodb": "^3.846.0",
+    "@aws-sdk/lib-dynamodb": "^3.846.0",
+    "jsonwebtoken": "^9.0.2",
+    "wage-shared": "*"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^20.11.24",
+    "serverless": "^3.38.0",
+    "serverless-dotenv-plugin": "^6.0.0",
+    "serverless-offline": "^13.3.3",
+    "typescript": "^5.3.3"
+  }
+}

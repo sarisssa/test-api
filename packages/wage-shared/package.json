@@ -6,10 +6,12 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
-    "dev": "tsc --watch",
-    "test": "jest"
+    "dev": "tsc --watch"
   },
   "dependencies": {},
+  "peerDependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.846.0"
+  },
   "devDependencies": {
     "@types/node": "^20.19.9",
     "typescript": "^5.4.4"

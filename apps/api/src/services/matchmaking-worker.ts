@@ -28,6 +28,12 @@ export const startMatchmakingWorker = async (fastify: FastifyInstance) => {
     }
   };
 
+  fastify.addHook('onClose', async () => {
+    if (isWorkerRunning) {
+      await shutdown();
+    }
+  });
+
   // Register shutdown handler
   // process.on('SIGTERM', shutdown);
   // process.on('SIGINT', shutdown);

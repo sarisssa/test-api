@@ -15,6 +15,7 @@ import healthRoutes from './routes/health.js';
 import matchGatewayRoutes from './routes/match-gateway.js';
 import researchWebSocketRoutes from './routes/research-websocket.js';
 import userRoutes from './routes/user.js';
+import wsInboundRoutes from './routes/ws-inbound.js';
 import { startMatchmakingWorker } from './services/matchmaking-worker.js';
 import { initMatchmaking } from './services/matchmaking.js';
 import { initializePhoneHashSalt } from './utils/phone-utils.js';
@@ -63,18 +64,68 @@ async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(assetRoutes, { prefix: '/assets' });
   await fastify.register(authRoutes, { prefix: '/auth' });
   await fastify.register(userRoutes, { prefix: '/user' });
+  await fastify.register(wsInboundRoutes);
 
   return fastify;
 }
 
+const shutdownSignals = ['SIGINT', 'SIGTERM'] as const;
+type ShutdownReason = (typeof shutdownSignals)[number] | 'unhandledRejection' | 'uncaughtException';
+
+const registerProcessEvents = (fastify: FastifyInstance) => {
+  let shuttingDown = false;
+
+  const closeGracefully = async (reason: ShutdownReason, exitCode = 0) => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+
+    fastify.log.info({ reason }, 'Shutting down gracefully');
+
+    try {
+      await fastify.close();
+    } catch (closeError) {
+      fastify.log.error({ closeError }, 'Error during graceful shutdown');
+      exitCode = exitCode || 1;
+    } finally {
+      process.exit(exitCode);
+    }
+  };
+
+  shutdownSignals.forEach((signal) => {
+    process.once(signal, () => {
+      closeGracefully(signal).catch((error) => {
+        fastify.log.error({ error, signal }, 'Failed to close gracefully');
+        process.exit(1);
+      });
+    });
+  });
+
+  process.on('unhandledRejection', (reason) => {
+    fastify.log.error({ reason }, 'Unhandled promise rejection');
+    closeGracefully('unhandledRejection', 1).catch(() => process.exit(1));
+  });
+
+  process.on('uncaughtException', (error) => {
+    fastify.log.error({ error }, 'Uncaught exception');
+    closeGracefully('uncaughtException', 1).catch(() => process.exit(1));
+  });
+};
+
 const start = async () => {
+  let fastify: FastifyInstance | null = null;
+
   try {
-    const fastify = await buildApp();
+    fastify = await buildApp();
+    registerProcessEvents(fastify);
+
     await fastify.listen({
       port: fastify.config.PORT,
       host: fastify.config.HOST,
     });
   } catch (err) {
+    fastify?.log.error({ err }, 'Failed to start Fastify instance');
     console.error(err);
     process.exit(1);
   }

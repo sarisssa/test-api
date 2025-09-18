@@ -1,0 +1,84 @@
+service: ws-gateway
+useDotenv: true
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  stage: ${opt:stage, 'local'}
+  region: ${opt:region, 'us-east-1'}
+  environment:
+    NODE_OPTIONS: --enable-source-maps
+    CONNECTIONS_TABLE: ${self:service}-connections-${self:provider.stage}
+    JWT_SECRET: ${env:JWT_SECRET}
+    INTERNAL_API_URL: ${env:INTERNAL_API_URL}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:PutItem
+        - dynamodb:DeleteItem
+        - dynamodb:GetItem
+        - dynamodb:Query
+      Resource:
+        - Fn::GetAtt: [ConnectionsTable, Arn]
+        - Fn::Join:
+            - ''
+            - - Fn::GetAtt: [ConnectionsTable, Arn]
+              - '/*'
+    - Effect: Allow
+      Action:
+        - execute-api:ManageConnections
+      Resource:
+        Fn::Join:
+          - ''
+          - - 'arn:aws:execute-api:'
+            - Ref: AWS::Region
+            - ':'
+            - Ref: AWS::AccountId
+            - ':'
+            - Ref: WebsApi
+            - '/'
+            - '${self:provider.stage}'
+            - '/POST/@connections/*'
+
+plugins:
+  - serverless-dotenv-plugin
+  - serverless-offline
+
+functions:
+  websocket:
+    handler: dist/handlers/websocket.handler
+    events:
+      - websocket:
+          route: $connect
+      - websocket:
+          route: $disconnect
+      - websocket:
+          route: $default
+
+resources:
+  Resources:
+    ConnectionsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.CONNECTIONS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: connectionId
+            AttributeType: S
+          - AttributeName: userId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: connectionId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: userId-index
+            KeySchema:
+              - AttributeName: userId
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+
+custom:
+  serverless-offline:
+    useChildProcesses: true
+    websocketPort: 3002

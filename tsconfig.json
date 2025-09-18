@@ -22,6 +22,7 @@
     { "path": "./packages/wage-shared" },
     { "path": "./apps/asset-manager" },
     { "path": "./apps/match-processor" },
-    { "path": "./apps/api" }
+    { "path": "./apps/api" },
+    { "path": "./apps/ws-gateway" }
   ]
 }
