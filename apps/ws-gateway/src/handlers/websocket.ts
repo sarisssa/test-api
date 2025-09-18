@@ -19,11 +19,17 @@ type JwtClaims = {
   [k: string]: unknown
 }
 
-const getToken = (event: APIGatewayProxyWebsocketEventV2): string | undefined => {
-  // Prefer querystring ?token=... then Authorization: Bearer ...
+type WebsocketEventWithQuery = APIGatewayProxyWebsocketEventV2 & {
+  queryStringParameters?: Record<string, string | undefined>
+  headers?: Record<string, string | undefined>
+}
+
+const getToken = (event: WebsocketEventWithQuery): string | undefined => {
+  // Read ?token first, then Authorization: Bearer ...
   const fromQuery = event.queryStringParameters?.token
   if (fromQuery) return fromQuery
-  const auth = event.headers?.authorization || event.headers?.Authorization
+  // Handle lower/uppercased header keys
+  const auth = event.headers?.authorization || (event.headers as any)?.Authorization
   if (!auth) return undefined
   const parts = auth.split(' ')
   if (parts.length === 2 && /^Bearer$/i.test(parts[0])) return parts[1]
@@ -59,20 +65,23 @@ const onConnect = async (event: APIGatewayProxyWebsocketEventV2): Promise<APIGat
     return bad(400, 'Token missing userId/sub claim')
   }
 
-  await ddbDoc.send(
-    new PutCommand({
-      TableName: CONNECTIONS_TABLE,
-      Item: {
-        connectionId,
-        userId,
-        domainName,
-        stage,
-        connectedAt: new Date().toISOString()
-      }
-    })
-  )
+  if (process.env.IS_OFFLINE === 'true') {
+    // Skip DynamoDB write during local offline runs
+  } else {
+    await ddbDoc.send(
+      new PutCommand({
+        TableName: CONNECTIONS_TABLE,
+        Item: {
+          connectionId,
+          userId,
+          domainName,
+          stage,
+          connectedAt: new Date().toISOString()
+        }
+      })
+    )
+  }
 
-  // Optional welcome ack
   try {
     const mgmt = mgmtClientFor(domainName, stage)
     await mgmt.send(
@@ -88,9 +97,13 @@ const onConnect = async (event: APIGatewayProxyWebsocketEventV2): Promise<APIGat
 
 const onDisconnect = async (event: APIGatewayProxyWebsocketEventV2): Promise<APIGatewayProxyResultV2> => {
   const { connectionId = '' } = event.requestContext
-  await ddbDoc.send(
-    new DeleteCommand({ TableName: CONNECTIONS_TABLE, Key: { connectionId } })
-  )
+  if (process.env.IS_OFFLINE === 'true') {
+    // Skip DynamoDB delete during local offline runs
+  } else {
+    await ddbDoc.send(
+      new DeleteCommand({ TableName: CONNECTIONS_TABLE, Key: { connectionId } })
+    )
+  }
   return ok({ disconnected: true })
 }
 
@@ -133,7 +146,6 @@ const onDefault = async (event: APIGatewayProxyWebsocketEventV2): Promise<APIGat
 
   const forwardResult = await forwardToInternalApi(event, parsed)
 
-  // Optional ACK back to client
   try {
     const mgmt = mgmtClientFor(domainName, stage)
     await mgmt.send(
@@ -162,4 +174,3 @@ export const handler = async (
       return onDefault(event)
   }
 }
-
