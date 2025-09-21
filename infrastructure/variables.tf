@@ -395,3 +395,9 @@ variable "lambda_deployment_package" {
   type        = string
   default     = ""
 }
+
+variable "websocket_lambda_deployment_package" {
+  description = "Path to the WebSocket Lambda deployment package (zip file). If empty, uses placeholder."
+  type        = string
+  default     = ""
+}
