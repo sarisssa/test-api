@@ -92,6 +92,12 @@ variable "alarm_evaluation_periods" {
   nullable    = true
 }
 
+variable "disable_alarms" {
+  description = "Whether to disable CloudWatch alarms for the environment."
+  type        = bool
+  default     = false
+}
+
 # ---------------------------------------------------
 # Budget Configuration
 # ---------------------------------------------------

@@ -1,3 +1,35 @@
+resource "aws_iam_role" "api_gateway_cloudwatch_role" {
+  name = "${var.project_name}-api-gateway-cloudwatch-role-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "apigateway.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name = "${var.project_name}-api-gateway-cloudwatch-role-${var.environment}"
+  }
+}
+
+# Attach the managed policy for API Gateway CloudWatch logs
+resource "aws_iam_role_policy_attachment" "api_gateway_cloudwatch_logs" {
+  role       = aws_iam_role.api_gateway_cloudwatch_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
+}
+
+# Set up API Gateway account settings for CloudWatch logging
+resource "aws_api_gateway_account" "api_gateway_account" {
+  cloudwatch_role_arn = aws_iam_role.api_gateway_cloudwatch_role.arn
+}
+
 resource "aws_apigatewayv2_api" "websocket_api" {
   name          = "${var.project_name}-websocket-api-${var.environment}"
   protocol_type = "WEBSOCKET"
