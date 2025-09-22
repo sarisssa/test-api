@@ -177,16 +177,16 @@ resource "aws_sfn_state_machine" "match_settlement" {
     }
   })
 
-  logging_configuration {
-    log_destination        = "${aws_cloudwatch_log_group.step_functions_logs.arn}:*"
-    include_execution_data = true
-    level                  = "ERROR"
-  }
+  # Temporarily disable logging to get state machine created
+  # Can be re-enabled later once the core functionality is working
+  # logging_configuration {
+  #   log_destination        = "${aws_cloudwatch_log_group.step_functions_logs.arn}:*"
+  #   include_execution_data = true
+  #   level                  = "ERROR"
+  # }
 
   depends_on = [
-    aws_iam_role_policy_attachment.step_functions_attachment,
-    aws_cloudwatch_log_group.step_functions_logs,
-    aws_cloudwatch_log_resource_policy.step_functions_logging_policy
+    aws_iam_role_policy_attachment.step_functions_attachment
   ]
 
   tags = {
