@@ -20,6 +20,26 @@ resource "aws_iam_role" "step_functions_role" {
   }
 }
 
+resource "aws_cloudwatch_log_resource_policy" "step_functions_logging_policy" {
+  policy_name = "${var.project_name}-step-functions-logging-policy-${var.environment}"
+  policy_document = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "states.amazonaws.com"
+        }
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = aws_cloudwatch_log_group.step_functions_logs.arn
+      }
+    ]
+  })
+}
+
 resource "aws_iam_policy" "step_functions_policy" {
   name        = "${var.project_name}-step-functions-policy-${var.environment}"
   description = "IAM policy for Step Functions to update DynamoDB and enable logging"
@@ -152,8 +172,9 @@ resource "aws_sfn_state_machine" "match_settlement" {
   }
 
   depends_on = [
-    aws_iam_role_policy_attachment.step_functions_attachment,
-    aws_cloudwatch_log_group.step_functions_logs
+     aws_iam_role_policy_attachment.step_functions_attachment,
+    aws_cloudwatch_log_group.step_functions_logs,
+    aws_cloudwatch_log_resource_policy.step_functions_logging_policy
   ]
 
   tags = {
