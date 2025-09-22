@@ -1,4 +1,3 @@
-
 resource "aws_iam_role" "step_functions_role" {
   name = "${var.project_name}-step-functions-role-${var.environment}"
 
@@ -17,6 +16,15 @@ resource "aws_iam_role" "step_functions_role" {
 
   tags = {
     Name = "${var.project_name}-step-functions-role-${var.environment}"
+  }
+}
+
+resource "aws_cloudwatch_log_group" "step_functions_logs" {
+  name              = "/aws/stepfunctions/${var.project_name}-match-settlement-${var.environment}"
+  retention_in_days = var.lambda_log_retention_days
+
+  tags = {
+    Name = "${var.project_name}-step-functions-logs-${var.environment}"
   }
 }
 
@@ -42,7 +50,7 @@ resource "aws_cloudwatch_log_resource_policy" "step_functions_logging_policy" {
 
 resource "aws_iam_policy" "step_functions_policy" {
   name        = "${var.project_name}-step-functions-policy-${var.environment}"
-  description = "IAM policy for Step Functions to update DynamoDB and enable logging"
+  description = "IAM policy for Step Functions to update DynamoDB and manage log delivery"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -56,17 +64,9 @@ resource "aws_iam_policy" "step_functions_policy" {
           "logs:DeleteLogDelivery",
           "logs:ListLogDeliveries",
           "logs:PutResourcePolicy",
-          "logs:DescribeResourcePolicies",
-          "logs:DescribeLogGroups",
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-          "logs:DescribeLogGroups"
+          "logs:DescribeResourcePolicies"
         ]
-        Resource = [
-          aws_cloudwatch_log_group.step_functions_logs.arn,
-          "${aws_cloudwatch_log_group.step_functions_logs.arn}:*"
-        ]
+        Resource = "*"
       },
       {
         Effect = "Allow"
@@ -165,14 +165,13 @@ resource "aws_sfn_state_machine" "match_settlement" {
   })
 
   logging_configuration {
-    # Corrected: Use the log group ARN without a trailing :*
     log_destination        = aws_cloudwatch_log_group.step_functions_logs.arn
     include_execution_data = true
     level                  = "ERROR"
   }
 
   depends_on = [
-     aws_iam_role_policy_attachment.step_functions_attachment,
+    aws_iam_role_policy_attachment.step_functions_attachment,
     aws_cloudwatch_log_group.step_functions_logs,
     aws_cloudwatch_log_resource_policy.step_functions_logging_policy
   ]
@@ -181,13 +180,3 @@ resource "aws_sfn_state_machine" "match_settlement" {
     Name = "${var.project_name}-match-settlement-${var.environment}"
   }
 }
-
-resource "aws_cloudwatch_log_group" "step_functions_logs" {
-  name              = "/aws/stepfunctions/${var.project_name}-match-settlement-${var.environment}"
-  retention_in_days = var.lambda_log_retention_days
-
-  tags = {
-    Name = "${var.project_name}-step-functions-logs-${var.environment}"
-  }
-}
-
