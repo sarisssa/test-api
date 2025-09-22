@@ -32,9 +32,21 @@ resource "aws_iam_policy" "step_functions_policy" {
         Action = [
           "logs:CreateLogGroup",
           "logs:CreateLogStream",
-          "logs:PutLogEvents"
+          "logs:PutLogEvents",
+          "logs:CreateLogDelivery",
+          "logs:GetLogDelivery",
+          "logs:UpdateLogDelivery",
+          "logs:DeleteLogDelivery",
+          "logs:ListLogDeliveries",
+          "logs:PutResourcePolicy",
+          "logs:DescribeResourcePolicies",
+          "logs:DescribeLogGroups"
         ]
-        Resource = "arn:aws:logs:*:*:*"
+        Resource = [
+          "arn:aws:logs:*:*:*",
+          aws_cloudwatch_log_group.step_functions_logs.arn,
+          "${aws_cloudwatch_log_group.step_functions_logs.arn}:*"
+        ]
       },
       {
         Effect = "Allow"
@@ -137,6 +149,11 @@ resource "aws_sfn_state_machine" "match_settlement" {
     include_execution_data = true
     level                 = "ERROR"
   }
+
+  depends_on = [
+    aws_cloudwatch_log_group.step_functions_logs,
+    aws_iam_role_policy_attachment.step_functions_attachment
+  ]
 
   tags = {
     Name = "${var.project_name}-match-settlement-${var.environment}"
