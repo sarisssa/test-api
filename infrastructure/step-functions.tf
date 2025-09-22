@@ -22,7 +22,7 @@ resource "aws_iam_role" "step_functions_role" {
 
 resource "aws_iam_policy" "step_functions_policy" {
   name        = "${var.project_name}-step-functions-policy-${var.environment}"
-  description = "IAM policy for Step Functions to update DynamoDB"
+  description = "IAM policy for Step Functions to update DynamoDB and enable logging"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -30,9 +30,6 @@ resource "aws_iam_policy" "step_functions_policy" {
       {
         Effect = "Allow"
         Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
           "logs:CreateLogDelivery",
           "logs:GetLogDelivery",
           "logs:UpdateLogDelivery",
@@ -40,10 +37,13 @@ resource "aws_iam_policy" "step_functions_policy" {
           "logs:ListLogDeliveries",
           "logs:PutResourcePolicy",
           "logs:DescribeResourcePolicies",
+          "logs:DescribeLogGroups",
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
           "logs:DescribeLogGroups"
         ]
         Resource = [
-          "arn:aws:logs:*:*:*",
           aws_cloudwatch_log_group.step_functions_logs.arn,
           "${aws_cloudwatch_log_group.step_functions_logs.arn}:*"
         ]
@@ -145,14 +145,15 @@ resource "aws_sfn_state_machine" "match_settlement" {
   })
 
   logging_configuration {
-    log_destination        = "${aws_cloudwatch_log_group.step_functions_logs.arn}:*"
+    # Corrected: Use the log group ARN without a trailing :*
+    log_destination        = aws_cloudwatch_log_group.step_functions_logs.arn
     include_execution_data = true
-    level                 = "ERROR"
+    level                  = "ERROR"
   }
 
   depends_on = [
-    aws_cloudwatch_log_group.step_functions_logs,
-    aws_iam_role_policy_attachment.step_functions_attachment
+    aws_iam_role_policy_attachment.step_functions_attachment,
+    aws_cloudwatch_log_group.step_functions_logs
   ]
 
   tags = {
