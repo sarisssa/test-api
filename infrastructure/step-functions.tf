@@ -71,6 +71,19 @@ resource "aws_iam_policy" "step_functions_policy" {
       {
         Effect = "Allow"
         Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogGroups"
+        ]
+        Resource = [
+          aws_cloudwatch_log_group.step_functions_logs.arn,
+          "${aws_cloudwatch_log_group.step_functions_logs.arn}:*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
           "dynamodb:UpdateItem",
           "dynamodb:PutItem",
           "dynamodb:GetItem"
