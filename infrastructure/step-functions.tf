@@ -165,7 +165,7 @@ resource "aws_sfn_state_machine" "match_settlement" {
   })
 
   logging_configuration {
-    log_destination        = aws_cloudwatch_log_group.step_functions_logs.arn
+    log_destination        = "${aws_cloudwatch_log_group.step_functions_logs.arn}:*"
     include_execution_data = true
     level                  = "ERROR"
   }
