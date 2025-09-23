@@ -30,6 +30,7 @@
     "build": "tsc",
     "postbuild": "mkdir -p dist/redis-scripts && cp src/redis-scripts/find-and-match-players.lua dist/redis-scripts/",
     "create-table": "node --loader ts-node/esm src/scripts/create-table.ts",
+    "insert-asset": "node --loader ts-node/esm src/scripts/insert-asset.ts",
     "dev": "npm run create-table && tsx watch src/main.ts",
     "lint": "eslint src/**/*.ts",
     "clean": "rm -rf dist"

@@ -6,6 +6,11 @@ What I added to the repo:
 - `apps/ws-gateway`: Serverless service with a WebSocket API (`$connect/$disconnect/$default`) and a DynamoDB table to store connections.
 - `packages/wage-shared/src/aws/apigw-management.ts`: a helper ECS can use to send messages to clients via the API Gateway Management API.
 
+API changes for research data:
+- Replaced the research WebSocket with a simple polling endpoint in the API.
+- New route `GET /assets/:symbol/price` returns `{ ticker, price, lastUpdated }` from DynamoDB and increments a `researchCount` counter.
+- Removed research WS route and subscription manager; the API no longer registers `@fastify/websocket` routes.
+
 What this gives us:
 - Reliable sockets during ECS deploys and scaling.
 - A canonical place (DynamoDB) to map users ↔ connections.
@@ -68,6 +73,24 @@ wscat -c "ws://localhost:3002?token=<jwt>"
 ```
 
 Note: API Gateway’s Management API is best exercised against a deployed stack; offline is great for iteration.
+
+## API Research Polling Endpoint
+- Endpoint: `GET /assets/:symbol/price`
+- Behavior:
+  - Looks up the asset in DynamoDB using key `(PK: ASSET#<AssetType>, SK: <Symbol>)`.
+  - Returns current price and lastUpdated.
+  - Increments `researchCount` on the asset as a best‑effort counter.
+- If the item isn’t present, the endpoint returns 404. For local testing, insert an item that matches the repository key pattern (below).
+
+## Local Testing Helper (insert a single asset)
+- Script: `apps/api/src/scripts/insert-asset.ts`
+- Usage (LocalStack on 4566):
+  - `npm -w api run create-table`
+  - `npm -w api run insert-asset -- --ticker AAPL --assetType STOCK --price 123.45 --name "Apple Inc."`
+- Verify:
+  - `curl http://localhost:3000/assets/AAPL/price`
+  - Expected: `{ "ticker": "AAPL", "price": 123.45, "lastUpdated": "..." }`
+  - Each call increments `researchCount` on that item.
 
 ## What Our API Needs To Receive
 Lambda forwards to `POST {INTERNAL_API_URL}/ws/inbound` with:
@@ -139,3 +162,4 @@ wss://<api-id>.execute-api.<region>.amazonaws.com/dev?token=<jwt>
 - 401 on connect → token invalid or `JWT_SECRET` not set in ws-gateway.
 - API not receiving messages → check `INTERNAL_API_URL` and `/ws/inbound` handler.
 - Can’t send to clients → ensure we saved `domainName/stage`, and ECS has `execute-api:ManageConnections`.
+- 404 on `GET /assets/:symbol/price` → the item isn’t in DynamoDB with key `(PK: ASSET#<AssetType>, SK: <Symbol>)`. Use the insert‑asset script above to seed a test record.

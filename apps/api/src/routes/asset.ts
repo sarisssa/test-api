@@ -48,7 +48,7 @@ export default async function assetRoutes(fastify: FastifyInstance) {
     try {
       const asset = await getAssetByTicker(fastify, symbol);
       if (!asset) {
-        return reply.notFound('Asset not found');
+        return reply.code(404).send({error: 'Asset not found'});
       }
 
       // Increment a simple research counter on the asset (best-effort)
