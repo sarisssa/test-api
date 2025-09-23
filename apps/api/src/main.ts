@@ -3,7 +3,6 @@ import cors from '@fastify/cors';
 import fastifyEnv from '@fastify/env';
 import jwt from '@fastify/jwt';
 import redis from '@fastify/redis';
-import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { FastifyInstance } from 'fastify';
 import { envSchema, type Env } from './config/env.js';
 import dynamodbPlugin from './plugins/dynamodb.js';
@@ -12,8 +11,7 @@ import twilioPlugin from './plugins/twilio.js';
 import assetRoutes from './routes/asset.js';
 import authRoutes from './routes/auth.js';
 import healthRoutes from './routes/health.js';
-import matchGatewayRoutes from './routes/match-gateway.js';
-import researchWebSocketRoutes from './routes/research-websocket.js';
+// Removed local WebSocket support; use API Gateway instead
 import userRoutes from './routes/user.js';
 import wsInboundRoutes from './routes/ws-inbound.js';
 import { startMatchmakingWorker } from './services/matchmaking-worker.js';
@@ -54,13 +52,11 @@ async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(repositoriesPlugin);
 
   // await initApiGatewayManagementClient(fastify);
-  await fastify.register(fastifyWebsocket);
   await startMatchmakingWorker(fastify);
   await initMatchmaking(fastify);
 
   await fastify.register(healthRoutes);
-  await fastify.register(matchGatewayRoutes, { prefix: '/match-gateway' });
-  await fastify.register(researchWebSocketRoutes);
+  // Local WebSocket routes removed in favor of API Gateway managed WebSockets
   await fastify.register(assetRoutes, { prefix: '/assets' });
   await fastify.register(authRoutes, { prefix: '/auth' });
   await fastify.register(userRoutes, { prefix: '/user' });

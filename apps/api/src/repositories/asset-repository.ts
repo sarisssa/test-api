@@ -1,4 +1,4 @@
-import { GetCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { FastifyInstance } from 'fastify';
 import { REDIS_KEYS } from '../constants.js';
 import { DynamoDBAssetItem } from '../models/asset.js';
@@ -77,6 +77,31 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
     return null;
   };
 
+  const incrementResearchCounter = async (
+    assetType: AssetType,
+    ticker: string
+  ): Promise<void> => {
+    try {
+      await fastify.dynamodb.send(
+        new UpdateCommand({
+          TableName: 'WageTable',
+          Key: {
+            PK: `ASSET#${assetType}`,
+            SK: ticker,
+          },
+          UpdateExpression:
+            'SET researchCount = if_not_exists(researchCount, :zero) + :inc',
+          ExpressionAttributeValues: {
+            ':zero': 0,
+            ':inc': 1,
+          },
+        })
+      );
+    } catch (error) {
+      logger.warn({ error, ticker, assetType, msg: 'Failed to increment researchCount' });
+    }
+  };
+
   const getAssetDetailsByTicker = async (
     ticker: string
   ): Promise<{ exists: boolean; assetType: AssetType | null }> => {
@@ -153,5 +178,6 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
     searchAssets,
     fetchAssetByTickerFromDB,
     getAssetDetailsByTicker,
+    incrementResearchCounter,
   };
 };

@@ -40,4 +40,32 @@ export default async function assetRoutes(fastify: FastifyInstance) {
       reply.status(500).send({ error: (error as Error).message });
     }
   });
+
+  // Stateless polling endpoint for current price
+  fastify.get('/:symbol/price', async (request, reply) => {
+    const { symbol } = request.params as { symbol: string };
+
+    try {
+      const asset = await getAssetByTicker(fastify, symbol);
+      if (!asset) {
+        return reply.notFound('Asset not found');
+      }
+
+      // Increment a simple research counter on the asset (best-effort)
+      try {
+        await fastify.repositories.asset.incrementResearchCounter(asset.AssetType as AssetType, asset.Symbol);
+      } catch (counterError) {
+        fastify.log.warn({ counterError, symbol }, 'Failed to increment research counter');
+      }
+
+      return {
+        ticker: asset.Symbol,
+        price: asset.currentPrice,
+        lastUpdated: asset.lastUpdated,
+      };
+    } catch (error) {
+      fastify.log.error({ error, symbol }, 'Error in GET /assets/:symbol/price');
+      return reply.status(500).send({ error: (error as Error).message });
+    }
+  });
 }

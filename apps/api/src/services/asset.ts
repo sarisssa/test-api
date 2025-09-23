@@ -42,6 +42,14 @@ export const getAssetByTicker = async (
   }
 };
 
+export const incrementAssetResearchCount = async (
+  fastify: FastifyInstance,
+  assetType: AssetType,
+  ticker: string
+): Promise<void> => {
+  await fastify.repositories.asset.incrementResearchCounter(assetType, ticker);
+};
+
 export const validateTickerSymbol = async (
   fastify: FastifyInstance,
   ticker: string

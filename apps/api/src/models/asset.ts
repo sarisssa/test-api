@@ -13,6 +13,7 @@ export interface DynamoDBAssetItem {
   change24h?: number;
   high24h?: number;
   low24h?: number;
+  researchCount?: number;
 
   //STOCK
   exchange?: string;
