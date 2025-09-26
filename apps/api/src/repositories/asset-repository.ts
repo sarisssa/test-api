@@ -13,7 +13,7 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
     limit: number = 20
   ): Promise<DynamoDBAssetItem[]> => {
     const params: ScanCommand['input'] = {
-      TableName: 'WageTable',
+      TableName: fastify.config.WAGE_TABLE_NAME,
       FilterExpression: 'contains(Symbol, :s) OR contains(#n, :s)',
       ExpressionAttributeNames: {
         '#n': 'name',
@@ -52,7 +52,7 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
       try {
         const result = await fastify.dynamodb.send(
           new GetCommand({
-            TableName: 'WageTable',
+            TableName: fastify.config.WAGE_TABLE_NAME,
             Key: {
               PK: `ASSET#${assetType}`,
               SK: ticker,
@@ -84,7 +84,7 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
     try {
       await fastify.dynamodb.send(
         new UpdateCommand({
-          TableName: 'WageTable',
+          TableName: fastify.config.WAGE_TABLE_NAME,
           Key: {
             PK: `ASSET#${assetType}`,
             SK: ticker,

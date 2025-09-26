@@ -50,7 +50,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
 
       const dbWritePromise = dynamodb.send(
         new PutCommand({
-          TableName: 'WageTable',
+          TableName: fastify.config.WAGE_TABLE_NAME,
           Item: {
             PK: `MATCH#${matchId}`,
             SK: 'DETAILS',
@@ -114,7 +114,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
 
       const matchResult = await dynamodb.send(
         new GetCommand({
-          TableName: 'WageTable',
+          TableName: fastify.config.WAGE_TABLE_NAME,
           Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
         })
       );
@@ -123,7 +123,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
         logger.warn({
           matchId,
           msg: 'Match not found in DynamoDB',
-          tableUsed: 'WageTable',
+          tableUsed: fastify.config.WAGE_TABLE_NAME,
         });
         return undefined;
       }
@@ -165,7 +165,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     try {
       await dynamodb.send(
         new UpdateCommand({
-          TableName: 'WageTable',
+          TableName: fastify.config.WAGE_TABLE_NAME,
           Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
           ConditionExpression:
             'attribute_exists(PK) AND attribute_exists(SK) AND #status = :assetStatus AND size(playerAssets.#userId.assets) < :maxAssets',
@@ -209,7 +209,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     try {
       await dynamodb.send(
         new UpdateCommand({
-          TableName: 'WageTable',
+          TableName: fastify.config.WAGE_TABLE_NAME,
           Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
           ConditionExpression:
             'attribute_exists(PK) AND attribute_exists(SK) AND #status = :assetStatus',
@@ -249,7 +249,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     try {
       await dynamodb.send(
         new UpdateCommand({
-          TableName: 'WageTable',
+          TableName: fastify.config.WAGE_TABLE_NAME,
           Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
           UpdateExpression: 'SET playerAssets.#userId.readyAt = :now',
           ExpressionAttributeNames: { '#userId': userId },
@@ -296,7 +296,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
 
       await dynamodb.send(
         new UpdateCommand({
-          TableName: 'WageTable',
+          TableName: fastify.config.WAGE_TABLE_NAME,
           Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
           UpdateExpression:
             'SET #status = :newStatus, matchStartedAt = :now, matchTentativeEndTime = :tentativeEndTime',
@@ -337,7 +337,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     try {
       await dynamodb.send(
         new UpdateCommand({
-          TableName: 'WageTable',
+          TableName: fastify.config.WAGE_TABLE_NAME,
           Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
           UpdateExpression: 'SET #status = :status',
           ConditionExpression: 'attribute_exists(PK) AND attribute_exists(SK)',
@@ -373,7 +373,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     try {
       await dynamodb.send(
         new UpdateCommand({
-          TableName: 'WageTable',
+          TableName: fastify.config.WAGE_TABLE_NAME,
           Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
           UpdateExpression: `SET playerAssets.#userId.assets[${assetIndex}].initialPrice = :initialPrice, playerAssets.#userId.assets[${assetIndex}].shares = :shares`,
           ExpressionAttributeNames: {

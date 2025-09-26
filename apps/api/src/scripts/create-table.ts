@@ -10,14 +10,14 @@ import {
   ScalarAttributeType,
 } from '@aws-sdk/client-dynamodb';
 
-const TABLE_NAME = 'WageTable';
+const TABLE_NAME = process.env.WAGE_TABLE_NAME || 'WageTable';
 
 const client = new DynamoDBClient({
-  region: 'us-east-1',
-  endpoint: 'http://localhost:4566', // LocalStack
+  region: process.env.DYNAMODB_REGION || 'us-east-1',
+  endpoint: process.env.DYNAMODB_URL || 'http://localhost:4566', // LocalStack (for local dev)
   credentials: {
-    accessKeyId: 'test',
-    secretAccessKey: 'test',
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'test',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'test',
   },
 });
 
@@ -77,9 +77,15 @@ async function createTable() {
   try {
     console.log(`🔨 Creating table: ${TABLE_NAME}`);
     await client.send(new CreateTableCommand(params));
-    console.log(`✅ Table '${TABLE_NAME}' created successfully`);
-  } catch (err) {
-    console.error('❌ Error creating table:', err);
+    console.log(`Table '${TABLE_NAME}' created successfully`);
+  } catch (err: any) {
+    if (err?.code === 'ECONNREFUSED') {
+      console.error(
+        `Could not reach DynamoDB at ${process.env.DYNAMODB_URL || 'http://localhost:4566'} (is LocalStack running on port 4566?)`
+      );
+    } else {
+      console.error('Error creating table:', err);
+    }
     process.exit(1);
   }
 }

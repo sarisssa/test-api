@@ -65,7 +65,7 @@ async function main() {
     lastUpdated: now
   }
 
-  await ddb.send(new PutCommand({ TableName: 'WageTable', Item: item }))
+  await ddb.send(new PutCommand({ TableName: process.env.WAGE_TABLE_NAME || 'WageTable', Item: item }))
   console.log('Inserted asset:', item)
 }
 
@@ -73,4 +73,3 @@ main().catch((err) => {
   console.error('Failed to insert asset', err)
   process.exit(1)
 })
-

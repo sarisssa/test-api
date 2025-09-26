@@ -8,11 +8,11 @@ const now = new Date();
 const twoMinutesFromNow = new Date(now.getTime() + 2 * 60 * 1000);
 
 const client = new DynamoDBClient({
-  region: 'us-east-1',
-  endpoint: 'http://localhost:4566', // LocalStack
+  region: process.env.DYNAMODB_REGION || 'us-east-1',
+  endpoint: process.env.DYNAMODB_URL || 'http://localhost:4566', // LocalStack for local dev
   credentials: {
-    accessKeyId: 'test',
-    secretAccessKey: 'test',
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'test',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'test',
   },
 });
 
@@ -75,7 +75,7 @@ async function createTestMatch() {
   try {
     await docClient.send(
       new PutCommand({
-        TableName: 'WageTable',
+        TableName: process.env.WAGE_TABLE_NAME || 'WageTable',
         Item: match,
       })
     );

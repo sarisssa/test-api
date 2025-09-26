@@ -12,11 +12,12 @@ declare module 'fastify' {
 }
 
 async function dynamodbPlugin(fastify: FastifyInstance) {
-  // For local development (when DYNAMODB_URL is set), use LocalStack
-  // For production (when DYNAMODB_URL is not set), use AWS DynamoDB
-  const isLocalDevelopment =
-    fastify.config.DYNAMODB_URL &&
-    fastify.config.DYNAMODB_URL.includes('localhost');
+  // For local development (when DYNAMODB_URL points to localhost), use our LocalStack
+  // For cloud (when DYNAMODB_URL is empty), use AWS DynamoDB
+  const url = fastify.config.DYNAMODB_URL || '';
+  const isLocalDevelopment = Boolean(
+    url && (url.includes('localhost') || url.includes('127.0.0.1') || url.includes('0.0.0.0'))
+  );
 
   const dynamodbClient = new DynamoDBClient({
     region: fastify.config.DYNAMODB_REGION,
@@ -33,9 +34,13 @@ async function dynamodbPlugin(fastify: FastifyInstance) {
 
   try {
     await dynamodbClient.send(new ListTablesCommand({}));
-    fastify.log.info(`DynamoDB connected to ${fastify.config.DYNAMODB_URL}`);
+    if (isLocalDevelopment) {
+      fastify.log.info(`DynamoDB connected to LocalStack at ${fastify.config.DYNAMODB_URL}`);
+    } else {
+      fastify.log.info('DynamoDB connected to AWS');
+    }
   } catch (error) {
-    fastify.log.error('DynamoDB connection failed:', error);
+    fastify.log.error({ error, endpoint: fastify.config.DYNAMODB_URL }, 'DynamoDB connection failed');
     throw error;
   }
 

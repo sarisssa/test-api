@@ -21,7 +21,8 @@ export const envSchema: FastifyEnvOptions['schema'] = {
     },
     DYNAMODB_URL: {
       type: 'string',
-      default: 'http://localhost:4566', // LocalStack endpoint
+      default: '',
+      description: 'When set to a localhost URL, the API connects to our LocalStack for local development. Leave empty in cloud environments to use AWS DynamoDB.',
     },
     TWELVE_DATA_API_KEY: {
       type: 'string',
@@ -30,6 +31,10 @@ export const envSchema: FastifyEnvOptions['schema'] = {
     DYNAMODB_REGION: {
       type: 'string',
       default: 'us-east-1',
+    },
+    WAGE_TABLE_NAME: {
+      type: 'string',
+      default: 'WageTable',
     },
     TWILIO_ACCOUNT_SID: {
       type: 'string',
@@ -68,6 +73,7 @@ export type Env = {
   REDIS_URL: string;
   DYNAMODB_URL: string;
   DYNAMODB_REGION: string;
+  WAGE_TABLE_NAME: string;
   TWELVE_DATA_API_KEY: string;
   TWILIO_ACCOUNT_SID: string;
   TWILIO_AUTH_TOKEN: string;

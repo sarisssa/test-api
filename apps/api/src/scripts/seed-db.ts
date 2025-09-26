@@ -10,15 +10,15 @@ import { DynamoDBAssetItem } from '../models/asset.js';
 
 config();
 
-const TABLE_NAME = 'WageTable';
+const TABLE_NAME = process.env.WAGE_TABLE_NAME || 'WageTable';
 const DATA_DIR = 'data';
 
 const client = new DynamoDBClient({
-  region: 'us-east-1',
-  endpoint: 'http://localhost:4566', // LocalStack - change for production
+  region: process.env.DYNAMODB_REGION || 'us-east-1',
+  endpoint: process.env.DYNAMODB_URL || 'http://localhost:4566', // LocalStack for local dev
   credentials: {
-    accessKeyId: 'test',
-    secretAccessKey: 'test',
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'test',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'test',
   },
 });
 
@@ -67,8 +67,8 @@ interface CommoditiesFile {
 
 function transformStockToDynamoDB(stock: StockData): DynamoDBAssetItem {
   return {
-    PK: `ASSET#${stock.symbol}`,
-    SK: `METADATA#${stock.symbol}`,
+    PK: `ASSET#STOCK`,
+    SK: stock.symbol,
     EntityType: 'Asset',
     AssetType: 'STOCK',
     Symbol: stock.symbol,
@@ -96,8 +96,8 @@ function transformStockToDynamoDB(stock: StockData): DynamoDBAssetItem {
 
 function transformCryptoToDynamoDB(crypto: CryptoData): DynamoDBAssetItem {
   return {
-    PK: `ASSET#${crypto.symbol}`,
-    SK: `METADATA#${crypto.symbol}`,
+    PK: `ASSET#CRYPTO`,
+    SK: crypto.symbol,
     EntityType: 'Asset',
     AssetType: 'CRYPTO',
     Symbol: crypto.symbol,
@@ -112,8 +112,8 @@ function transformCommodityToDynamoDB(
   commodity: CommodityData
 ): DynamoDBAssetItem {
   return {
-    PK: `ASSET#${commodity.symbol}`,
-    SK: `METADATA#${commodity.symbol}`,
+    PK: `ASSET#COMMODITY`,
+    SK: commodity.symbol,
     EntityType: 'Asset',
     AssetType: 'COMMODITY',
     Symbol: commodity.symbol,

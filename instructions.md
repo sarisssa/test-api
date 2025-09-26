@@ -1,119 +1,92 @@
-# How I’m Fixing Our WebSockets In AWS (And How You Can Run It)
+# WebSockets and API: Operation Guide
 
-We’re moving WebSocket connection management off ECS and into API Gateway + Lambda. API Gateway will hold the sockets; a tiny Lambda will proxy messages to our existing ECS Fastify API. ECS keeps all business logic, but it no longer owns long‑lived connections (so deploys/restarts don’t drop players).
+This document standardizes WebSocket handling in AWS and describes how the API and supporting services run locally and in cloud environments. The intent is to make development, testing, and deployment clear and repeatable for the team.
 
-What I added to the repo:
-- `apps/ws-gateway`: Serverless service with a WebSocket API (`$connect/$disconnect/$default`) and a DynamoDB table to store connections.
-- `packages/wage-shared/src/aws/apigw-management.ts`: a helper ECS can use to send messages to clients via the API Gateway Management API.
+## Overview
+- WebSocket connections are managed by API Gateway + Lambda; the ECS Fastify API handles the business logic.
+- The Lambda proxies messages to the API (`POST /ws/inbound`). The API can push messages back to clients using the API Gateway Management API.
+- DynamoDB holds game/matchmaking and asset data. For local development, LocalStack provides a local DynamoDB endpoint.
 
-API changes for research data:
-- Replaced the research WebSocket with a simple polling endpoint in the API.
-- New route `GET /assets/:symbol/price` returns `{ ticker, price, lastUpdated }` from DynamoDB and increments a `researchCount` counter.
-- Removed research WS route and subscription manager; the API no longer registers `@fastify/websocket` routes.
+## Components
+- `apps/ws-gateway`: Serverless service exposing `$connect`, `$disconnect`, `$default` routes. Creates the WebSocket connections table.
+- `apps/api`: Fastify API. Manages users, matchmaking, asset lookups, and receives proxied WebSocket messages via `/ws/inbound`.
+- `apps/match-processor`: Batch/stream worker for pricing and match updates.
+- `packages/wage-shared`: Helpers including API Gateway Management API client for sending to WebSocket connections.
 
-What this gives us:
-- Reliable sockets during ECS deploys and scaling.
-- A canonical place (DynamoDB) to map users ↔ connections.
-- A single HTTP handoff from sockets → our API for all game/matchmaking actions.
+## Configuration (env)
+- API (`apps/api/.env`): see `.env.example`. Required for local development:
+  - `JWT_SECRET`, `PHONE_HASH_SALT`
+  - `REDIS_URL` (e.g., `redis://127.0.0.1:6379`)
+  - `DYNAMODB_URL` (set to `http://localhost:4566` for LocalStack)
+  - `DYNAMODB_REGION` (e.g., `us-east-1`)
+  - `WAGE_TABLE_NAME` (default `WageTable`)
+  - Twilio keys are required for `/auth` flows; for local non-auth testing, stub with placeholders.
+- WS Gateway (`apps/ws-gateway/.env`): `JWT_SECRET`, `INTERNAL_API_URL` (e.g., `http://localhost:3000`).
+- Match Processor (`apps/match-processor/.env`): `WAGE_TABLE_NAME`, AWS region, plus any data provider keys as needed.
 
-## Architecture (at a glance)
-- API Gateway (WebSocket): maintains client connections.
-- Lambda (single function):
-  - `$connect`: validate JWT, save `connectionId/userId/domainName/stage` in DynamoDB.
-  - `$disconnect`: remove the record.
-  - `$default`: forward messages to our API at `POST {INTERNAL_API_URL}/ws/inbound`.
-- ECS (Fastify API): handles the real work; can push to clients using the stored `connectionId`s.
+Notes
+- In cloud environments, `DYNAMODB_URL` MUST be empty to use AWS DynamoDB. LocalStack is automatically detected when `DYNAMODB_URL` includes `localhost`.
+- The WS connections table name is `${service}-connections-${stage}` (e.g., `ws-gateway-connections-dev`).
 
-## Environment I’m Using
-- ws-gateway (`apps/ws-gateway/.env`):
-  - `JWT_SECRET` (same as API uses)
-  - `INTERNAL_API_URL` (our API base URL; e.g., `http://localhost:3000` locally or the ALB URL in dev/prd)
-- api (`apps/api/.env`): see `.env.example` (ensure `REDIS_URL`, `DYNAMODB_URL`, `DYNAMODB_REGION`, `JWT_SECRET`, `PHONE_HASH_SALT`, etc.).
-- match-processor (`apps/match-processor/.env`): see `.env.example`.
-
-Connections table name is `${service}-connections-${stage}` (Serverless sets this; e.g., `ws-gateway-connections-dev`).
-
-## DynamoDB Shape
-- PK: `connectionId` (S)
-- Attributes: `userId` (S), `domainName` (S), `stage` (S), `connectedAt` (ISO)
-- GSI: `userId-index` (query by user to fan out to all their devices)
-
-## How I Run This Locally
-1) Install deps at the repo root
+## Local Development (offline)
+1) Install dependencies
 ```
 npm install
 ```
-2) Copy env examples and fill them in
+2) Copy env examples and fill the required values
 ```
-cp apps/ws-gateway/.env.example apps/ws-gateway/.env   # set JWT_SECRET, INTERNAL_API_URL
-cp apps/api/.env.example apps/api/.env                 # set Redis/Dynamo/etc.
+cp apps/api/.env.example apps/api/.env
+cp apps/ws-gateway/.env.example apps/ws-gateway/.env
 ```
-3) Optional local infra
+3) Start local infrastructure (Redis and LocalStack)
 ```
-docker run -d --name wage-redis -p 6379:6379 redis:7
-docker run -d --name localstack -p 4566:4566 -e SERVICES=dynamodb,sqs localstack/localstack
+docker compose -f docker-compose.dev.yml up -d
 ```
-4) Build both
+4) Build services (optional during iteration)
 ```
 npm run build -w api
 npm run build -w ws-gateway
 ```
-5) Run the API (Fastify)
+5) Run the API
 ```
 npm run dev:api
 ```
-6) Run the WebSocket gateway (Serverless Offline, ws on port 3002)
+6) Run the WebSocket gateway (Serverless Offline, ws on port 3003)
 ```
 npm -w ws-gateway run dev
 ```
-7) Smoke test with a JWT
+7) WebSocket smoke test
 ```
-wscat -c "ws://localhost:3002?token=<jwt>"
+wscat -c "ws://localhost:3003?token=<jwt>"
 > {"action":"echo","payload":{"msg":"hello"}}
 ```
 
-Note: API Gateway’s Management API is best exercised against a deployed stack; offline is great for iteration.
+## API Endpoints for Offline Testing
+- Health: `GET /health` (reports Redis status and configured URLs)
+- Assets search: `GET /assets?search=AA&limit=10`
+- Asset by ticker: `GET /assets/:ticker`
+- Polling price: `GET /assets/:symbol/price`
 
-## API Research Polling Endpoint
-- Endpoint: `GET /assets/:symbol/price`
-- Behavior:
-  - Looks up the asset in DynamoDB using key `(PK: ASSET#<AssetType>, SK: <Symbol>)`.
-  - Returns current price and lastUpdated.
-  - Increments `researchCount` on the asset as a best‑effort counter.
-- If the item isn’t present, the endpoint returns 404. For local testing, insert an item that matches the repository key pattern (below).
+Seeding helpers (LocalStack on 4566)
+- Create the local table: `npm -w api run create-table`
+- Insert one asset: `npm -w api run insert-asset -- --ticker AAPL --assetType STOCK --price 123.45 --name "Apple Inc."`
+- Verify: `curl http://localhost:3000/assets/AAPL/price`
 
-## Local Testing Helper (insert a single asset)
-- Script: `apps/api/src/scripts/insert-asset.ts`
-- Usage (LocalStack on 4566):
-  - `npm -w api run create-table`
-  - `npm -w api run insert-asset -- --ticker AAPL --assetType STOCK --price 123.45 --name "Apple Inc."`
-- Verify:
-  - `curl http://localhost:3000/assets/AAPL/price`
-  - Expected: `{ "ticker": "AAPL", "price": 123.45, "lastUpdated": "..." }`
-  - Each call increments `researchCount` on that item.
-
-## What Our API Needs To Receive
-Lambda forwards to `POST {INTERNAL_API_URL}/ws/inbound` with:
+## WebSocket Inbound Contract
+The WS gateway forwards to `POST {INTERNAL_API_URL}/ws/inbound` with:
 ```
 {
-  "action": "SomeAction",
+  "action": "<action>",
   "payload": { ... },
   "connectionId": "...",
-  "userId": "...",            
+  "userId": "...",
   "requestContext": { "domainName": "...", "stage": "..." }
 }
 ```
-Minimal Fastify route we can drop in:
-```
-fastify.post('/ws/inbound', async (req, reply) => {
-  const body = req.body
-  // TODO: switch on body.action → route into our existing services
-  return reply.code(200).send({ ok: true })
-})
-```
+The API routes on `action` and performs matchmaking and asset operations.
 
-## How We Send Messages Back To Clients From ECS
-Use the shared helper in `wage-shared`:
+## Sending Messages Back To Clients
+Use the shared helper (`wage-shared`):
 ```
 import { sendToConnection } from 'wage-shared'
 
@@ -124,9 +97,9 @@ await sendToConnection({
   data: { type: 'state_update', payload: {...} }
 })
 ```
-Fan out to all connections for a user by querying the `userId-index` GSI and iterating.
+Fan out by querying `userId-index` in the WS connections table and iterating all connections for that user.
 
-Grant the ECS task role this permission to talk to the WebSocket API:
+IAM required on the ECS task role:
 ```
 {
   "Effect": "Allow",
@@ -135,31 +108,70 @@ Grant the ECS task role this permission to talk to the WebSocket API:
 }
 ```
 
-## How I Deploy The WebSocket Gateway
-```
-npm -w ws-gateway run build
-npm -w ws-gateway run deploy -- --stage dev
-```
-Then I set `JWT_SECRET` and `INTERNAL_API_URL` for that stage (via Serverless/env). Serverless prints the WebSocket URL; point the client at:
-```
-wss://<api-id>.execute-api.<region>.amazonaws.com/dev?token=<jwt>
-```
+## Deployment Paths (backend)
+- API (ECS):
+  1. Build and push the container image to ECR.
+  2. Ensure task environment variables are set (JWT/Twilio/Redis/region).
+  3. Leave `DYNAMODB_URL` unset in ECS to use AWS DynamoDB.
+- WS Gateway (Serverless):
+  1. `npm -w ws-gateway run build`
+  2. `npm -w ws-gateway run deploy -- --stage dev`
+  3. Provide `JWT_SECRET` and `INTERNAL_API_URL` via env for the stage.
+  4. Connect clients to `wss://<api-id>.execute-api.<region>.amazonaws.com/dev?token=<jwt>`.
+- Match Processor (Serverless/Lambda): deploy from `apps/match-processor` using its Serverless configuration.
 
-## Rollout Plan
-- Deploy `ws-gateway` and verify `$connect/$disconnect/$default`.
-- Add `POST /ws/inbound` to the API, confirm it gets messages.
-- Point clients at the new WebSocket URL and send `{ action, payload }`.
-- Wire ECS → client pushes using `sendToConnection` (and the `userId-index`).
-- Remove the in‑memory WebSocket maps from ECS once verified.
+## Online Tests (cloud)
+- Health check the API via ALB: `GET /health`.
+- Price polling flows against DynamoDB assets.
+- WS connect, send action payloads via gateway, and verify API receives and processes `/ws/inbound`.
+- End-to-end: trigger a matchmaking action and confirm fan-out to client connections using the Management API.
 
-## Ops Notes
-- Connections won’t drop during ECS deploys anymore—API Gateway owns them.
-- `$disconnect` cleans up; consider TTL/periodic checks to remove stragglers.
-- Add CloudWatch metrics around connects/disconnects/forwards/error rates.
-- If the API is private, run the Lambda in our VPC or expose a secured ingress path.
+## Troubleshooting
+- ECONNREFUSED to `127.0.0.1:4566` or `::1:4566` during `npm run dev:api`:
+  - LocalStack is not running. Start it with `docker compose -f docker-compose.dev.yml up -d`.
+  - Verify: `curl -s localhost:4566/_localstack/health | jq` (should show services healthy).
+- API fails to start in cloud due to DynamoDB connection errors:
+  - Ensure `DYNAMODB_URL` is empty in ECS; the API must connect to AWS DynamoDB in cloud.
+- 404 on `GET /assets/:symbol/price`:
+  - The item is absent in DynamoDB. Use the insert-asset script to seed a test record in LocalStack.
+- WebSocket offline port:
+  - Serverless Offline runs on port 3003 (not 3002).
+- Twilio errors locally:
+  - Provide test credentials for Twilio or avoid hitting `/auth` during local iteration.
 
-## If Something Isn’t Working
-- 401 on connect → token invalid or `JWT_SECRET` not set in ws-gateway.
-- API not receiving messages → check `INTERNAL_API_URL` and `/ws/inbound` handler.
-- Can’t send to clients → ensure we saved `domainName/stage`, and ECS has `execute-api:ManageConnections`.
-- 404 on `GET /assets/:symbol/price` → the item isn’t in DynamoDB with key `(PK: ASSET#<AssetType>, SK: <Symbol>)`. Use the insert‑asset script above to seed a test record.
+## OrbStack Setup (alternative to Docker Desktop fo MacOS users)
+- Redis
+  - Pull image: `docker pull redis:7`
+  - Start: `docker run --name wage-redis -d -p 6379:6379 redis:7`
+  - Optional (with config file):
+    - `docker run -d --name wage-redis -p 6379:6379 -v $(pwd)/docker/redis/redis.conf:/usr/local/etc/redis/redis.conf redis:latest redis-server /usr/local/etc/redis/redis.conf`
+- LocalStack
+  - CLI: `brew install localstack/tap/localstack-cli`
+  - Start: `localstack start`
+  - Verify:
+    - `docker ps` shows a `localstack` container
+    - `curl -s localhost:4566/_localstack/health | jq` returns healthy services
+    - Optional: `awslocal dynamodb list-tables`
+- Environment
+  - `apps/api/.env` should include: `REDIS_URL=redis://127.0.0.1:6379`, `DYNAMODB_URL=http://localhost:4566`, `DYNAMODB_REGION=us-east-1`, `WAGE_TABLE_NAME=WageTable`
+- Create local table and run API
+  - `npm -w api run create-table`
+  - `npm run dev:api`
+- Notes
+  - Only one Redis container can bind `6379`. Stop other Redis containers if the port is in use.
+  - The project supports either `localhost` or `127.0.0.1` for LocalStack. Both are detected automatically.
+  - `docker compose -f docker-compose.dev.yml up -d` remains a valid alternative under OrbStack.
+
+## Known Inconsistencies and Stability Improvements
+- Table schema/name drift:
+  - The application uses `WageTable` with `PK/SK` (uppercase). The Terraform `infrastructure/dynamodb.tf` defines a table `${var.project_name}-main-${var.environment}` with `pk/sk` (lowercase) and different GSIs.
+  - Action: coordinate with DevOps to align Terraform to the current schema or plan a code migration to the infra schema. Until resolved, local development uses `WageTable` via LocalStack.
+- Centralized table name:
+  - The API now reads `WAGE_TABLE_NAME` from env; hard-coded references were removed. The match-processor already supported this.
+- Safer environment defaults:
+  - `DYNAMODB_URL` no longer defaults to LocalStack in code; it remains empty in cloud and must be explicitly set for local development.
+- Dev ergonomics:
+  - `docker-compose.dev.yml` is provided to spin up Redis and LocalStack quickly.
+
+## Ownership Notes
+The API, WebSocket gateway, and DynamoDB tables are designed to be operated together. The setup above standardizes local development to mirror the cloud environment while keeping iteration fast and reliable.

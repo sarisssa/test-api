@@ -28,7 +28,7 @@ export const createUserRepository = (fastify: FastifyInstance) => {
 
     const result = await dynamodb.send(
       new GetCommand({
-        TableName: 'WageTable',
+        TableName: fastify.config.WAGE_TABLE_NAME,
         Key: {
           PK: `USER#${hashedPhoneNumber}`,
           SK: 'PROFILE',
@@ -66,7 +66,7 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     try {
       await dynamodb.send(
         new PutCommand({
-          TableName: 'WageTable',
+          TableName: fastify.config.WAGE_TABLE_NAME,
           Item: user,
           ConditionExpression: 'attribute_not_exists(PK)',
         })
@@ -116,7 +116,7 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     try {
       await dynamodb.send(
         new PutCommand({
-          TableName: 'WageTable',
+          TableName: fastify.config.WAGE_TABLE_NAME,
           Item: {
             ...user,
             lastLoggedIn: new Date().toISOString(),
@@ -143,7 +143,7 @@ export const createUserRepository = (fastify: FastifyInstance) => {
   ): Promise<DynamoDBUserItem | undefined> => {
     try {
       const scanParams = {
-        TableName: 'WageTable',
+        TableName: fastify.config.WAGE_TABLE_NAME,
         FilterExpression: 'userId = :userId AND EntityType = :entityType',
         ExpressionAttributeValues: {
           ':userId': userId,
@@ -180,7 +180,7 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     try {
       const result = await dynamodb.send(
         new ScanCommand({
-          TableName: 'WageTable',
+          TableName: fastify.config.WAGE_TABLE_NAME,
           FilterExpression: 'EntityType = :entityType AND username = :username',
           ExpressionAttributeValues: {
             ':entityType': 'User',
@@ -227,7 +227,7 @@ export const createUserRepository = (fastify: FastifyInstance) => {
 
       await dynamodb.send(
         new PutCommand({
-          TableName: 'WageTable',
+          TableName: fastify.config.WAGE_TABLE_NAME,
           Item: updatedUser,
         })
       );
@@ -261,7 +261,7 @@ export const createUserRepository = (fastify: FastifyInstance) => {
 
       const result = await dynamodb.send(
         new QueryCommand({
-          TableName: 'WageTable',
+          TableName: fastify.config.WAGE_TABLE_NAME,
           KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
           ExpressionAttributeValues: {
             ':pk': user.PK,

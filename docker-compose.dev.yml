@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7
+    container_name: wage-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server"]
+
+  localstack:
+    image: localstack/localstack
+    container_name: wage-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=dynamodb,sqs
+      - DEFAULT_REGION=us-east-1
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+
