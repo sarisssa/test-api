@@ -20,7 +20,6 @@ import {
   validatePlayers,
 } from '../validators/match-validator.js';
 import { validateTickerSymbol } from './asset.js';
-import { broadcastToMatch } from './connection-manager.js';
 
 const initializeMatchAssetPricing = async (
   fastify: FastifyInstance,
@@ -122,12 +121,14 @@ export const handleAssetSelection = async (
       throw new Error('Failed to fetch updated match after asset selection');
     }
 
-    await broadcastToMatch(fastify, updatedMatch.matchId, {
-      type: 'asset_selection_update',
-      matchId: updatedMatch.matchId,
-      playerAssets: updatedMatch.playerAssets,
-      timestamp: Date.now(),
-    });
+    if (fastify.wsManager) {
+      await fastify.wsManager.broadcastMatch(updatedMatch.matchId, {
+        type: 'asset_selection_update',
+        matchId: updatedMatch.matchId,
+        playerAssets: updatedMatch.playerAssets,
+        timestamp: Date.now(),
+      })
+    }
 
     return {
       type: 'asset_selection_success',
@@ -174,12 +175,14 @@ export const handleAssetDeselection = async (
       throw new Error('Failed to fetch updated match after asset deselection');
     }
 
-    await broadcastToMatch(fastify, updatedMatch.matchId, {
-      type: 'asset_deselection_update',
-      matchId: updatedMatch.matchId,
-      playerAssets: updatedMatch.playerAssets,
-      timestamp: Date.now(),
-    });
+    if (fastify.wsManager) {
+      await fastify.wsManager.broadcastMatch(updatedMatch.matchId, {
+        type: 'asset_deselection_update',
+        matchId: updatedMatch.matchId,
+        playerAssets: updatedMatch.playerAssets,
+        timestamp: Date.now(),
+      })
+    }
 
     return {
       type: 'asset_deselection_success',
@@ -222,20 +225,24 @@ export const handleReadyCheck = async (
     if (bothPlayersReady) {
       const startedMatch = await handleMatchStart(fastify, matchId);
 
-      await broadcastToMatch(fastify, startedMatch.matchId, {
-        type: 'match_started',
-        matchId: startedMatch.matchId,
-        matchStartedAt: startedMatch.matchStartedAt,
-        playerAssets: startedMatch.playerAssets,
-        message: 'Match is starting! Good luck!',
-      });
+      if (fastify.wsManager) {
+        await fastify.wsManager.broadcastMatch(startedMatch.matchId, {
+          type: 'match_started',
+          matchId: startedMatch.matchId,
+          matchStartedAt: startedMatch.matchStartedAt,
+          playerAssets: startedMatch.playerAssets,
+          message: 'Match is starting! Good luck!'
+        })
+      }
     } else {
-      await broadcastToMatch(fastify, updatedMatch.matchId, {
-        type: 'ready_status_update',
-        matchId: updatedMatch.matchId,
-        playerAssets: updatedMatch.playerAssets,
-        status: 'asset_selection',
-      });
+      if (fastify.wsManager) {
+        await fastify.wsManager.broadcastMatch(updatedMatch.matchId, {
+          type: 'ready_status_update',
+          matchId: updatedMatch.matchId,
+          playerAssets: updatedMatch.playerAssets,
+          status: 'asset_selection'
+        })
+      }
     }
 
     return {

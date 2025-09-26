@@ -1,15 +1,10 @@
 import { FastifyInstance } from 'fastify';
 import { MatchmakingJob, MatchResult } from '../types/matchmaking.js';
-import {
-  notifyPlayersOfMatch,
-  startWebSocketMessageSubscriber,
-} from './connection-manager.js';
 import { createMatch } from './match.js';
 
 export const initMatchmaking = async (
   fastify: FastifyInstance
 ): Promise<void> => {
-  await startWebSocketMessageSubscriber(fastify);
   fastify.log.info(
     'Matchmaking service initialized - queues will be created on first use'
   );
@@ -111,7 +106,9 @@ export const handlePlayerJoined = async (
     if (queueSize >= 2) {
       const match = await findAndCreateMatch(fastify);
       if (match) {
-        await notifyPlayersOfMatch(fastify, match);
+        if (fastify.wsManager) {
+          await fastify.wsManager.notifyMatchFound(match);
+        }
       }
     }
   } catch (error) {

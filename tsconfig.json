@@ -21,7 +21,6 @@
   "references": [
     { "path": "./packages/wage-shared" },
     { "path": "./apps/match-processor" },
-    { "path": "./apps/api" },
-    { "path": "./apps/ws-gateway" }
+    { "path": "./apps/api" }
   ]
 }
