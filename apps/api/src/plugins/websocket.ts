@@ -1,4 +1,5 @@
-import websocket from '@fastify/websocket'
+import websocket, { SocketStream } from '@fastify/websocket'
+import { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import fp from 'fastify-plugin'
 import { WebSocketManager } from '../websocket/connection-manager.js'
 import { handleInboundMessage } from '../services/ws-inbound-handler.js'
@@ -9,7 +10,11 @@ declare module 'fastify' {
   }
 }
 
-async function websocketPlugin(fastify: any) {
+type WebsocketQuery = {
+  token?: string
+}
+
+const websocketPlugin: FastifyPluginAsync = async (fastify) => {
   await fastify.register(websocket)
 
   const manager = new WebSocketManager(fastify)
@@ -20,8 +25,11 @@ async function websocketPlugin(fastify: any) {
     await manager.close()
   })
 
-  fastify.get('/ws', { websocket: true }, async (connection, request) => {
-    const { token } = request.query as { token?: string }
+  fastify.get('/ws', { websocket: true }, async (
+    connection: SocketStream,
+    request: FastifyRequest<{ Querystring: WebsocketQuery }>
+  ) => {
+    const { token } = request.query
     if (!token) {
       connection.socket.send(JSON.stringify({ ok: false, error: 'missing_token' }))
       connection.socket.close()
@@ -77,4 +85,3 @@ async function websocketPlugin(fastify: any) {
 }
 
 export default fp(websocketPlugin)
-

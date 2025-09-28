@@ -23,7 +23,7 @@ export type InboundResponse = {
 export async function handleInboundMessage(
   fastify: FastifyInstance,
   message: InboundRequest
-): Promise<InboundResponse | undefined> {
+): Promise<InboundResponse> {
   const { action, payload, connectionId, userId } = message
 
   if (!action) {
