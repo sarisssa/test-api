@@ -3,15 +3,38 @@ import { FastifyEnvOptions } from '@fastify/env';
 export const envSchema: FastifyEnvOptions['schema'] = {
   type: 'object',
   required: [
+    'AWS_REGION',
+    'DYNAMODB_TABLE_NAME',
+    'S3_BUCKET_NAME',
     'JWT_SECRET',
+    'PHONE_HASH_SALT',
+    'TWELVE_DATA_API_KEY',
     'TWILIO_ACCOUNT_SID',
     'TWILIO_AUTH_TOKEN',
     'TWILIO_VERIFY_SERVICE_SID',
-    'TWELVE_DATA_API_KEY',
-    'PHONE_HASH_SALT',
   ],
   properties: {
+    AWS_REGION: {
+      type: 'string',
+      minLength: 1,
+      default: 'us-east-1',
+    },
+    DYNAMODB_TABLE_NAME: {
+      type: 'string',
+      minLength: 1,
+    },
+    DYNAMODB_URL: {
+      type: 'string',
+    },
+    S3_BUCKET_NAME: {
+      type: 'string',
+      minLength: 1,
+    },
     JWT_SECRET: {
+      type: 'string',
+      minLength: 1,
+    },
+    PHONE_HASH_SALT: {
       type: 'string',
       minLength: 1,
     },
@@ -19,16 +42,9 @@ export const envSchema: FastifyEnvOptions['schema'] = {
       type: 'string',
       default: 'redis://127.0.0.1:6379',
     },
-    DYNAMODB_URL: {
-      type: 'string',
-    },
     TWELVE_DATA_API_KEY: {
       type: 'string',
       minLength: 1,
-    },
-    DYNAMODB_REGION: {
-      type: 'string',
-      default: 'us-east-1',
     },
     TWILIO_ACCOUNT_SID: {
       type: 'string',
@@ -42,14 +58,6 @@ export const envSchema: FastifyEnvOptions['schema'] = {
       type: 'string',
       minLength: 1,
     },
-    PHONE_HASH_SALT: {
-      type: 'string',
-      minLength: 1,
-    },
-    PORT: {
-      type: 'number',
-      default: 3000,
-    },
     HOST: {
       type: 'string',
       default: '0.0.0.0',
@@ -59,20 +67,26 @@ export const envSchema: FastifyEnvOptions['schema'] = {
       enum: ['development', 'production', 'test'],
       default: 'development',
     },
+    PORT: {
+      type: 'number',
+      default: 3000,
+    },
   },
 };
 
 export type Env = {
+  AWS_REGION: string;
+  DYNAMODB_TABLE_NAME: string;
+  DYNAMODB_URL?: string;
+  S3_BUCKET_NAME: string;
   JWT_SECRET: string;
+  PHONE_HASH_SALT: string;
   REDIS_URL: string;
-  DYNAMODB_URL: string;
-  DYNAMODB_REGION: string;
   TWELVE_DATA_API_KEY: string;
   TWILIO_ACCOUNT_SID: string;
   TWILIO_AUTH_TOKEN: string;
   TWILIO_VERIFY_SERVICE_SID: string;
-  PHONE_HASH_SALT: string;
-  PORT: number;
   HOST: string;
   NODE_ENV: 'development' | 'production' | 'test';
+  PORT: number;
 };
