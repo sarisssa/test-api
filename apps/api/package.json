@@ -4,11 +4,13 @@
   "dependencies": {
     "@aws-sdk/client-apigatewaymanagementapi": "^3.844.0",
     "@aws-sdk/client-dynamodb": "^3.846.0",
+    "@aws-sdk/client-s3": "^3.899.0",
     "@aws-sdk/lib-dynamodb": "^3.846.0",
     "@fastify/auth": "^4.3.0",
     "@fastify/cors": "^8.4.1",
     "@fastify/env": "^4.3.0",
     "@fastify/jwt": "^7.2.4",
+    "@fastify/multipart": "^8.3.1",
     "@fastify/redis": "^6.1.1",
     "@fastify/sensible": "^5.5.0",
     "@fastify/websocket": "^8.2.0",
