@@ -2,12 +2,14 @@ import auth from '@fastify/auth';
 import cors from '@fastify/cors';
 import fastifyEnv from '@fastify/env';
 import jwt from '@fastify/jwt';
+import fastifyMultipart from '@fastify/multipart';
 import redis from '@fastify/redis';
 import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { FastifyInstance } from 'fastify';
 import { envSchema, type Env } from './config/env.js';
 import dynamodbPlugin from './plugins/dynamodb.js';
 import repositoriesPlugin from './plugins/repositories.js';
+import s3Plugin from './plugins/s3.js';
 import twilioPlugin from './plugins/twilio.js';
 import assetRoutes from './routes/asset.js';
 import authRoutes from './routes/auth.js';
@@ -49,9 +51,15 @@ async function buildApp(): Promise<FastifyInstance> {
   });
 
   await fastify.register(dynamodbPlugin);
+  await fastify.register(s3Plugin);
   await fastify.register(twilioPlugin);
   await fastify.register(repositoriesPlugin);
-
+  await fastify.register(fastifyMultipart, {
+    limits: {
+      fileSize: 5 * 1024 * 1024,
+      files: 1,
+    },
+  });
   // await initApiGatewayManagementClient(fastify);
   await fastify.register(fastifyWebsocket);
   await startMatchmakingWorker(fastify);

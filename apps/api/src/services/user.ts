@@ -1,3 +1,4 @@
+import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { FastifyInstance } from 'fastify';
 import { DynamoDBPlayerMatchItem } from '../models/match.js';
 import { DynamoDBUserItem, UserPublicProfile } from '../models/user.js';
@@ -9,7 +10,10 @@ const toPublicProfile = (user: DynamoDBUserItem): UserPublicProfile => {
     emailAddress: user.emailAddress,
     experiencePoints: user.experiencePoints,
     stats: user.stats,
-    profile: user.profile,
+    profile: {
+      profilePictureUrl: user.profilePictureUrl,
+      bio: user.bio,
+    },
   };
 };
 
@@ -120,6 +124,71 @@ export const getUserMatchHistory = async (
       userId,
       error,
       msg: 'Error in getMatchHistory service',
+    });
+    throw error;
+  }
+};
+
+export interface UploadProfilePictureParams {
+  userId: string;
+  fileBuffer: Buffer;
+  mimetype: string;
+}
+
+export const uploadProfilePicture = async (
+  fastify: FastifyInstance,
+  { userId, fileBuffer, mimetype }: UploadProfilePictureParams
+): Promise<{ profilePictureUrl: string; user: UserPublicProfile }> => {
+  try {
+    if (!fastify.config.S3_BUCKET_NAME) {
+      throw new Error('S3_BUCKET_NAME not configured');
+    }
+
+    if (!fastify.config.AWS_REGION) {
+      throw new Error('AWS_REGION not configured');
+    }
+
+    const fileExtension = mimetype.split('/')[1];
+    const s3Key = `profiles/${userId}/${Date.now()}.${fileExtension}`;
+
+    await fastify.s3.send(
+      new PutObjectCommand({
+        Bucket: fastify.config.S3_BUCKET_NAME,
+        Key: s3Key,
+        Body: fileBuffer,
+        ContentType: mimetype,
+      })
+    );
+
+    const profilePictureUrl = `https://${fastify.config.S3_BUCKET_NAME}.s3.${fastify.config.AWS_REGION}.amazonaws.com/${s3Key}`;
+
+    const updatedUser = await fastify.repositories.user.updateProfilePicture(
+      userId,
+      profilePictureUrl
+    );
+
+    fastify.log.info({
+      userId,
+      profilePictureUrl,
+      msg: 'User profile updated with new picture URL',
+    });
+
+    return {
+      profilePictureUrl,
+      user: toPublicProfile(updatedUser),
+    };
+  } catch (error) {
+    fastify.log.error({
+      userId,
+      error:
+        error instanceof Error
+          ? {
+              message: error.message,
+              stack: error.stack,
+              name: error.name,
+            }
+          : error,
+      msg: 'Error in uploadProfilePicture service',
     });
     throw error;
   }

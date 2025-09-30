@@ -28,10 +28,10 @@ export const createUserRepository = (fastify: FastifyInstance) => {
 
     const result = await dynamodb.send(
       new GetCommand({
-        TableName: 'WageTable',
+        TableName: fastify.config.DYNAMODB_TABLE_NAME,
         Key: {
-          PK: `USER#${hashedPhoneNumber}`,
-          SK: 'PROFILE',
+          pk: `USER#${hashedPhoneNumber}`,
+          sk: 'PROFILE',
         },
       })
     );
@@ -47,8 +47,8 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     const userId = uuidv4();
 
     const user: DynamoDBUserItem = {
-      PK: `USER#${hashedPhoneNumber}`,
-      SK: 'PROFILE',
+      pk: `USER#${hashedPhoneNumber}`,
+      sk: 'PROFILE',
       EntityType: 'User',
       userId,
       hashedPhoneNumber,
@@ -60,15 +60,18 @@ export const createUserRepository = (fastify: FastifyInstance) => {
         totalMatches: 0,
         wins: 0,
         losses: 0,
+        experience: 0,
+        inGameCurrency: 100,
+        capital: 0,
       },
     };
 
     try {
       await dynamodb.send(
         new PutCommand({
-          TableName: 'WageTable',
+          TableName: fastify.config.DYNAMODB_TABLE_NAME,
           Item: user,
-          ConditionExpression: 'attribute_not_exists(PK)',
+          ConditionExpression: 'attribute_not_exists(pk)',
         })
       );
 
@@ -116,7 +119,7 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     try {
       await dynamodb.send(
         new PutCommand({
-          TableName: 'WageTable',
+          TableName: fastify.config.DYNAMODB_TABLE_NAME,
           Item: {
             ...user,
             lastLoggedIn: new Date().toISOString(),
@@ -143,7 +146,7 @@ export const createUserRepository = (fastify: FastifyInstance) => {
   ): Promise<DynamoDBUserItem | undefined> => {
     try {
       const scanParams = {
-        TableName: 'WageTable',
+        TableName: fastify.config.DYNAMODB_TABLE_NAME,
         FilterExpression: 'userId = :userId AND EntityType = :entityType',
         ExpressionAttributeValues: {
           ':userId': userId,
@@ -180,7 +183,7 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     try {
       const result = await dynamodb.send(
         new ScanCommand({
-          TableName: 'WageTable',
+          TableName: fastify.config.DYNAMODB_TABLE_NAME,
           FilterExpression: 'EntityType = :entityType AND username = :username',
           ExpressionAttributeValues: {
             ':entityType': 'User',
@@ -227,7 +230,7 @@ export const createUserRepository = (fastify: FastifyInstance) => {
 
       await dynamodb.send(
         new PutCommand({
-          TableName: 'WageTable',
+          TableName: fastify.config.DYNAMODB_TABLE_NAME,
           Item: updatedUser,
         })
       );
@@ -250,6 +253,46 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     }
   };
 
+  const updateProfilePicture = async (
+    userId: string,
+    profilePictureUrl: string
+  ): Promise<DynamoDBUserItem> => {
+    try {
+      const currentUser = await getUserById(userId);
+      if (!currentUser) {
+        throw new Error('User not found');
+      }
+
+      const updatedUser = {
+        ...currentUser,
+        profilePictureUrl,
+      };
+
+      await dynamodb.send(
+        new PutCommand({
+          TableName: fastify.config.DYNAMODB_TABLE_NAME,
+          Item: updatedUser,
+        })
+      );
+
+      logger.info({
+        userId,
+        profilePictureUrl,
+        msg: 'Profile picture URL updated successfully',
+      });
+
+      return updatedUser;
+    } catch (error) {
+      logger.error({
+        userId,
+        profilePictureUrl,
+        error,
+        msg: 'Error updating profile picture URL',
+      });
+      throw error;
+    }
+  };
+
   const getUserMatches = async (
     userId: string
   ): Promise<DynamoDBPlayerMatchItem[]> => {
@@ -261,10 +304,10 @@ export const createUserRepository = (fastify: FastifyInstance) => {
 
       const result = await dynamodb.send(
         new QueryCommand({
-          TableName: 'WageTable',
-          KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
+          TableName: fastify.config.DYNAMODB_TABLE_NAME,
+          KeyConditionExpression: 'pk = :pk AND begins_with(sk, :skPrefix)',
           ExpressionAttributeValues: {
-            ':pk': user.PK,
+            ':pk': user.pk,
             ':skPrefix': 'MATCH#',
           },
         })
@@ -289,5 +332,6 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     updateUserLastLoginTimestamp,
     updateUsername,
     getUserMatches,
+    updateProfilePicture,
   };
 };

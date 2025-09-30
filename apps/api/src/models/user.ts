@@ -1,6 +1,6 @@
 export interface DynamoDBUserItem {
-  PK: `USER#${string}`;
-  SK: 'PROFILE';
+  pk: `USER#${string}`;
+  sk: 'PROFILE';
   EntityType: 'User';
   userId: string;
   hashedPhoneNumber: string;
@@ -15,12 +15,12 @@ export interface DynamoDBUserItem {
     totalMatches: number;
     wins: number;
     losses: number;
+    experience: number;
+    inGameCurrency: number;
+    capital: number;
   };
-
-  profile?: {
-    profilePictureUrl?: string;
-    bio?: string;
-  };
+  profilePictureUrl?: string;
+  bio?: string;
 }
 
 export interface UserPublicProfile {

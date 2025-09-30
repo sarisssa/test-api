@@ -10,3 +10,7 @@ export type UpdateUsernameBody = z.infer<typeof updateUsernameBodySchema>;
 export const updateUsernameJsonSchema = zodToJsonSchema(
   updateUsernameBodySchema
 );
+
+export interface UploadRouteParams {
+  userId: string;
+}

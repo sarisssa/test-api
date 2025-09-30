@@ -13,14 +13,14 @@ declare module 'fastify' {
 
 async function dynamodbPlugin(fastify: FastifyInstance) {
   const dynamodbClient = new DynamoDBClient({
-    region: fastify.config.DYNAMODB_REGION,
+    region: fastify.config.AWS_REGION,
   });
 
   const dynamodb = DynamoDBDocumentClient.from(dynamodbClient);
 
   try {
     await dynamodbClient.send(new ListTablesCommand({}));
-    fastify.log.info(`DynamoDB connected to ${fastify.config.DYNAMODB_URL}`);
+    fastify.log.info(`DynamoDB connected to ${fastify.config.AWS_REGION}`);
   } catch (error) {
     fastify.log.error('DynamoDB connection failed:', error);
     throw error;
