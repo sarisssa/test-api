@@ -413,3 +413,15 @@ variable "settlement_lambda_deployment_package" {
   type        = string
   default     = ""
 }
+
+variable "enable_bastion" {
+  description = "Whether to create a bastion host for development access to private resources"
+  type        = bool
+  default     = false
+}
+
+variable "bastion_instance_type" {
+  description = "Instance type for the bastion host"
+  type        = string
+  default     = "t3.micro"
+}
