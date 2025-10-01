@@ -98,7 +98,10 @@ export const verifyOtp = async (
         phoneNumber: user.phoneNumber,
         username: user.username,
         stats: user.stats,
-        profile: user.profile,
+        profile: {
+          profilePictureUrl: user.profilePictureUrl,
+          bio: user.bio,
+        },
       },
     };
   } catch (error) {
