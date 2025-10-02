@@ -92,6 +92,12 @@ variable "alarm_evaluation_periods" {
   nullable    = true
 }
 
+variable "disable_alarms" {
+  description = "Whether to disable CloudWatch alarms for the environment."
+  type        = bool
+  default     = false
+}
+
 # ---------------------------------------------------
 # Budget Configuration
 # ---------------------------------------------------
@@ -394,4 +400,28 @@ variable "lambda_deployment_package" {
   description = "Path to the Lambda deployment package (zip file). If empty, uses placeholder."
   type        = string
   default     = ""
+}
+
+variable "websocket_lambda_deployment_package" {
+  description = "Path to the WebSocket Lambda deployment package (zip file). If empty, uses placeholder."
+  type        = string
+  default     = ""
+}
+
+variable "settlement_lambda_deployment_package" {
+  description = "Path to the Settlement Lambda deployment package (zip file). If empty, uses placeholder."
+  type        = string
+  default     = ""
+}
+
+variable "enable_bastion" {
+  description = "Whether to create a bastion host for development access to private resources"
+  type        = bool
+  default     = false
+}
+
+variable "bastion_instance_type" {
+  description = "Instance type for the bastion host"
+  type        = string
+  default     = "t3.micro"
 }

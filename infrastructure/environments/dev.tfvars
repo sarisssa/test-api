@@ -48,3 +48,7 @@ lambda_timeout              = 30
 lambda_memory_size          = 256
 lambda_log_retention_days   = 7
 # twelve_data_api_key        = "your-api-key-here"  # Set via TF_VAR_twelve_data_api_key
+
+# Bastion Host Configuration
+enable_bastion              = true
+bastion_instance_type       = "t3.micro"
