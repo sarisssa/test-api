@@ -21,6 +21,12 @@ export interface DynamoDBUserItem {
   };
   profilePictureUrl?: string;
   bio?: string;
+  perks?: {
+    [perkId: string]: {
+      purchasedAt: string;
+      quantity: number;
+    };
+  };
 }
 
 export interface UserPublicProfile {

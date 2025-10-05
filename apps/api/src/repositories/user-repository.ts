@@ -8,6 +8,7 @@ import {
   PutCommand,
   QueryCommand,
   ScanCommand,
+  UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
@@ -324,6 +325,81 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     }
   };
 
+  const updateUserPerksAndCurrency = async (
+    userId: string,
+    perks: { [perkId: string]: { purchasedAt: string; quantity: number } },
+    newBalance: number
+  ): Promise<void> => {
+    logger.info({
+      userId,
+      newBalance,
+      perksCount: Object.keys(perks).length,
+      msg: 'Starting updateUserPerksAndCurrency',
+    });
+
+    try {
+      const user = await getUserById(userId);
+      if (!user) {
+        logger.error({
+          userId,
+          msg: 'User not found in updateUserPerksAndCurrency',
+        });
+        throw new Error('User not found');
+      }
+
+      logger.info({
+        userId,
+        userPk: user.pk,
+        userSk: user.sk,
+        tableName: fastify.config.DYNAMODB_TABLE_NAME,
+        currentBalance: user.stats.inGameCurrency,
+        newBalance,
+        msg: 'About to update user in DynamoDB',
+      });
+
+      const updateParams = {
+        TableName: fastify.config.DYNAMODB_TABLE_NAME,
+        Key: {
+          pk: user.pk,
+          sk: user.sk,
+        },
+        UpdateExpression: 'SET perks = :perks, stats.inGameCurrency = :balance',
+        ExpressionAttributeValues: {
+          ':perks': perks,
+          ':balance': newBalance,
+        },
+      };
+
+      logger.info({
+        userId,
+        updateParams: JSON.stringify(updateParams, null, 2),
+        msg: 'DynamoDB UpdateCommand parameters',
+      });
+
+      await dynamodb.send(new UpdateCommand(updateParams));
+
+      logger.info({
+        userId,
+        newBalance,
+        msg: 'User perks and currency updated successfully',
+      });
+    } catch (error) {
+      logger.error({
+        userId,
+        error:
+          error instanceof Error
+            ? {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+              }
+            : error,
+        msg: 'Error updating user perks and currency',
+      });
+      throw error;
+    }
+  };
+
   return {
     fetchUserByPhone,
     getUserById,
@@ -333,5 +409,6 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     updateUsername,
     getUserMatches,
     updateProfilePicture,
+    updateUserPerksAndCurrency,
   };
 };
