@@ -2,8 +2,10 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
+import { ErrorResponseSchema } from '../types/error.js';
 
 export default fp(async function (fastify: FastifyInstance) {
+  fastify.addSchema(ErrorResponseSchema);
   await fastify.register(swagger, {
     openapi: {
       info: {

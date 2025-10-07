@@ -45,6 +45,41 @@ export const uploadRouteParamsJsonSchema = {
   additionalProperties: false,
 } as const;
 
+export const friendRequestResponseJsonSchema = {
+  type: 'object',
+  properties: {
+    requestId: {
+      type: 'string',
+      description: 'Unique identifier for the friend request',
+    },
+    userId: {
+      type: 'string',
+      description: 'ID of the user who sent/received the request',
+    },
+    username: {
+      type: 'string',
+      description: 'Username of the user who sent/received the request',
+    },
+    profilePictureUrl: {
+      type: 'string',
+      nullable: true,
+      description: "URL to the user's profile picture, if any",
+    },
+    requestedAt: {
+      type: 'string',
+      format: 'date-time',
+      description: 'Timestamp when the request was created',
+    },
+    direction: {
+      type: 'string',
+      enum: ['incoming', 'outgoing'],
+      description: 'Whether this is an incoming or outgoing request',
+    },
+  },
+  required: ['requestId', 'userId', 'requestedAt', 'direction'],
+  additionalProperties: false,
+} as const;
+
 export const getFriendRequestsQueryJsonSchema = {
   type: 'object',
   properties: {
@@ -80,6 +115,45 @@ export const matchesResponseJsonSchema = {
   additionalProperties: false,
 } as const;
 
+export const userProfileResponseSchema = {
+  type: 'object',
+  properties: {
+    userId: { type: 'string' },
+    phoneNumber: { type: 'string' },
+    experiencePoints: { type: 'number' },
+    stats: {
+      type: 'object',
+      properties: {
+        totalMatches: { type: 'number' },
+        wins: { type: 'number' },
+        losses: { type: 'number' },
+        experience: { type: 'number' },
+        inGameCurrency: { type: 'number' },
+        capital: { type: 'number' },
+      },
+    },
+    profile: {
+      type: 'object',
+      properties: {
+        profilePictureUrl: { type: 'string', nullable: true },
+        bio: { type: 'string', nullable: true },
+      },
+    },
+    perks: {
+      type: 'object',
+      additionalProperties: {
+        type: 'object',
+        properties: {
+          purchasedAt: { type: 'string' },
+          quantity: { type: 'number' },
+        },
+      },
+    },
+    createdAt: { type: 'string' },
+    lastLoggedIn: { type: 'string' },
+  },
+} as const;
+
 export const friendsResponseJsonSchema = {
   type: 'object',
   properties: {
@@ -101,5 +175,46 @@ export const friendsResponseJsonSchema = {
     },
   },
   required: ['friends'],
+  additionalProperties: false,
+} as const;
+
+export const profilePictureResponseSchema = {
+  type: 'object',
+  properties: {
+    message: { type: 'string' },
+    profilePictureUrl: { type: 'string' },
+    user: userProfileResponseSchema,
+  },
+  required: ['message', 'profilePictureUrl', 'user'],
+  additionalProperties: false,
+} as const;
+
+export const invitesResponseSchema = {
+  type: 'object',
+  properties: {
+    invites: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          inviteCode: { type: 'string' },
+          status: { type: 'string' },
+          createdAt: { type: 'string' },
+          inviteUrl: { type: 'string' },
+        },
+        required: ['inviteCode', 'status', 'createdAt', 'inviteUrl'],
+      },
+    },
+    stats: {
+      type: 'object',
+      properties: {
+        total: { type: 'number' },
+        sent: { type: 'number' },
+        accepted: { type: 'number' },
+      },
+      required: ['total', 'sent', 'accepted'],
+    },
+  },
+  required: ['invites', 'stats'],
   additionalProperties: false,
 } as const;

@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { getUserFriends, getUserRequests } from '../services/friend.js';
 import { getUserInvites } from '../services/invite.js';
+
 import {
   getUserMatchHistory,
   getUserProfile,
@@ -10,48 +11,115 @@ import {
 import {
   GetFriendRequestsQuery,
   UpdateUsernameBody,
+  friendRequestResponseJsonSchema,
   friendsResponseJsonSchema,
   getFriendRequestsQueryJsonSchema,
+  invitesResponseSchema,
   matchesResponseJsonSchema,
+  profilePictureResponseSchema,
   updateUsernameJsonSchema,
+  userProfileResponseSchema,
 } from '../types/user.js';
 
 export default async function userRoutes(fastify: FastifyInstance) {
-  fastify.get('/', async (request, reply) => {
-    try {
-      const userProfile = await getUserProfile(fastify, request.user.userId);
+  fastify.get<{
+    Headers: { authorization: string };
+  }>(
+    '/',
+    {
+      schema: {
+        tags: ['user'],
+        description: 'Get user profile',
+        response: {
+          200: userProfileResponseSchema,
+          404: {
+            description: 'User not found',
+            $ref: 'ErrorResponse#',
+          },
+          500: {
+            description: 'Internal server error',
+            $ref: 'ErrorResponse#',
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const userProfile = await getUserProfile(fastify, request.user.userId);
 
-      if (!userProfile) {
-        fastify.log.warn({
-          userId: request.user.userId,
-          msg: 'User profile not found',
+        if (!userProfile) {
+          fastify.log.warn({
+            userId: request.user.userId,
+            msg: 'User profile not found',
+          });
+          return reply.status(404).send({
+            statusCode: 404,
+            error: 'Not Found',
+            message: 'User not found',
+          });
+        }
+
+        const response = userProfile;
+
+        return reply.send(response);
+      } catch (error) {
+        fastify.log.error({
+          error:
+            error instanceof Error
+              ? {
+                  message: error.message,
+                  stack: error.stack,
+                  name: error.name,
+                }
+              : error,
+          query: request.query,
+          msg: 'Error getting user profile',
         });
-        return reply.status(404).send({ error: 'User not found' });
+        return reply.status(500).send({
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Internal server error',
+        });
       }
-
-      return reply.send(userProfile);
-    } catch (error) {
-      fastify.log.error({
-        error:
-          error instanceof Error
-            ? {
-                message: error.message,
-                stack: error.stack,
-                name: error.name,
-              }
-            : error,
-        query: request.query,
-        msg: 'Error getting user profile',
-      });
-      return reply.status(500).send({ error: 'Internal server error' });
     }
-  });
+  );
 
   fastify.put<{ Body: UpdateUsernameBody }>(
     '/username',
     {
       schema: {
+        tags: ['user'],
+        description: 'Update user username',
         body: updateUsernameJsonSchema,
+        response: {
+          200: {
+            description: 'Username updated successfully',
+            type: 'object',
+            properties: {
+              message: {
+                type: 'string',
+                example: 'Username updated successfully',
+              },
+              newUsername: {
+                type: 'string',
+                example: 'new_johndoe',
+              },
+            },
+            required: ['message', 'newUsername'],
+          },
+          404: {
+            description: 'User not found',
+            $ref: 'ErrorResponse#',
+          },
+          409: {
+            description: 'Username already taken',
+            $ref: 'ErrorResponse#',
+          },
+          500: {
+            description: 'Internal server error',
+            $ref: 'ErrorResponse#',
+          },
+        },
       },
     },
     async (request, reply) => {
@@ -63,41 +131,86 @@ export default async function userRoutes(fastify: FastifyInstance) {
           username.trim()
         );
 
-        return reply.send(updatedUser);
+        return reply.send({
+          message: 'Username updated successfully',
+          newUsername: updatedUser.username,
+        });
       } catch (error) {
         fastify.log.error({ error, msg: 'Error updating username' });
 
         if (error instanceof Error && error.message === 'User not found') {
-          return reply.status(404).send({ error: 'User not found' });
+          return reply.status(404).send({
+            statusCode: 404,
+            error: 'Not Found',
+            message: 'User not found',
+          });
         }
 
         if (
           error instanceof Error &&
           error.message === 'Username already taken'
         ) {
-          return reply.status(409).send({ error: 'Username already taken' });
+          return reply.status(409).send({
+            statusCode: 409,
+            error: 'Conflict',
+            message: 'Username already taken',
+          });
         }
 
-        return reply.status(500).send({ error: 'Internal server error' });
+        return reply.status(500).send({
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Internal server error',
+        });
       }
     }
   );
 
-  fastify.put(
+  fastify.put<{
+    Headers: { authorization: string };
+  }>(
     '/profile-picture',
+    {
+      schema: {
+        tags: ['user'],
+        description: 'Upload user profile picture',
+        consumes: ['multipart/form-data'],
+        response: {
+          200: profilePictureResponseSchema,
+          400: {
+            description: 'Invalid request',
+            $ref: 'ErrorResponse#',
+          },
+          404: {
+            description: 'User not found',
+            $ref: 'ErrorResponse#',
+          },
+          500: {
+            description: 'Internal server error',
+            $ref: 'ErrorResponse#',
+          },
+        },
+      },
+    },
 
     async (request, reply) => {
       try {
         const file = await request.file();
 
         if (!file) {
-          return reply.status(400).send({ error: 'No file uploaded.' });
+          return reply.status(400).send({
+            statusCode: 400,
+            error: 'Bad Request',
+            message: 'No file uploaded',
+          });
         }
 
         const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
         if (!allowedTypes.includes(file.mimetype)) {
           return reply.status(400).send({
-            error: 'Invalid file type. Only JPEG, PNG, and WebP are allowed.',
+            statusCode: 400,
+            error: 'Bad Request',
+            message: 'Invalid file type. Only JPEG, PNG, and WebP are allowed.',
           });
         }
 
@@ -129,7 +242,11 @@ export default async function userRoutes(fastify: FastifyInstance) {
         });
 
         if (error instanceof Error && error.message === 'User not found') {
-          return reply.status(404).send({ error: 'User not found' });
+          return reply.status(404).send({
+            statusCode: 404,
+            error: 'Not Found',
+            message: 'User not found',
+          });
         }
 
         if (
@@ -137,12 +254,19 @@ export default async function userRoutes(fastify: FastifyInstance) {
           (error.message === 'S3_BUCKET_NAME not configured' ||
             error.message === 'AWS_REGION not configured')
         ) {
-          return reply.status(500).send({ error: error.message });
+          return reply.status(500).send({
+            statusCode: 500,
+            error: 'Internal Server Error',
+            message: error.message,
+          });
         }
 
         return reply.status(500).send({
-          error: 'Internal server error.',
-          details: error instanceof Error ? error.message : 'Unknown error',
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message:
+            'Internal server error: ' +
+            (error instanceof Error ? error.message : 'Unknown error'),
         });
       }
     }
@@ -152,8 +276,18 @@ export default async function userRoutes(fastify: FastifyInstance) {
     '/matches',
     {
       schema: {
+        tags: ['user'],
+        description: 'Get user match history',
         response: {
           200: matchesResponseJsonSchema,
+          404: {
+            description: 'User not found',
+            $ref: 'ErrorResponse#',
+          },
+          500: {
+            description: 'Internal server error',
+            $ref: 'ErrorResponse#',
+          },
         },
       },
     },
@@ -169,63 +303,105 @@ export default async function userRoutes(fastify: FastifyInstance) {
         fastify.log.error({ error, msg: 'Error getting user matches' });
 
         if (error instanceof Error && error.message === 'User not found') {
-          return reply.status(404).send({ error: 'User not found' });
+          return reply.status(404).send({
+            statusCode: 404,
+            error: 'Not Found',
+            message: 'User not found',
+          });
         }
 
-        return reply.status(500).send({ error: 'Internal server error' });
+        return reply.status(500).send({
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Internal server error',
+        });
       }
     }
   );
 
-  fastify.get('/invites', async (request, reply) => {
-    try {
-      const invites = await getUserInvites(fastify, request.user.userId);
+  fastify.get(
+    '/invites',
+    {
+      schema: {
+        tags: ['user', 'invites'],
+        description: 'Get user invites',
+        response: {
+          200: invitesResponseSchema,
+          404: {
+            description: 'User not found',
+            $ref: 'ErrorResponse#',
+          },
+          500: {
+            description: 'Internal server error',
+            $ref: 'ErrorResponse#',
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const invites = await getUserInvites(fastify, request.user.userId);
 
-      const invitesWithStats = invites.map(invite => ({
-        inviteCode: invite.inviteCode,
-        status: invite.status,
-        createdAt: invite.createdAt,
-        inviteUrl: `https://wage.app/invite/${invite.inviteCode}`,
-      }));
+        const invitesWithStats = invites.map(invite => ({
+          inviteCode: invite.inviteCode,
+          status: invite.status,
+          createdAt: invite.createdAt,
+          inviteUrl: `https://wage.app/invite/${invite.inviteCode}`,
+        }));
 
-      const stats = {
-        total: invites.length,
-        sent: invites.filter(i => i.status === 'SENT').length,
-        accepted: invites.filter(i => i.status === 'ACCEPTED').length,
-      };
+        const stats = {
+          total: invites.length,
+          sent: invites.filter(i => i.status === 'SENT').length,
+          accepted: invites.filter(i => i.status === 'ACCEPTED').length,
+        };
 
-      return {
-        invites: invitesWithStats,
-        stats,
-      };
-    } catch (error) {
-      fastify.log.error({
-        error,
-        userId: request.user.userId,
-        msg: 'Error in GET /user/invites endpoint',
-      });
+        return reply.send({
+          invites: invitesWithStats,
+          stats,
+        });
+      } catch (error) {
+        fastify.log.error({
+          error,
+          userId: request.user.userId,
+          msg: 'Error in GET /user/invites endpoint',
+        });
 
-      if (error instanceof Error && error.message === 'User not found') {
-        return reply.status(404).send({ error: 'User not found' });
+        if (error instanceof Error && error.message === 'User not found') {
+          return reply.status(404).send({
+            statusCode: 404,
+            error: 'Not Found',
+            message: 'User not found',
+          });
+        }
+
+        return reply.status(500).send({
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Failed to fetch user invites',
+        });
       }
-
-      return reply.status(500).send({ error: 'Failed to fetch user invites' });
     }
-  });
+  );
 
   fastify.get(
     '/friends',
     {
       schema: {
+        tags: ['user', 'friends'],
+        description: 'Get user friends list',
         response: {
           200: friendsResponseJsonSchema,
+          500: {
+            description: 'Internal server error',
+            $ref: 'ErrorResponse#',
+          },
         },
       },
     },
     async (request, reply) => {
       try {
         const friends = await getUserFriends(fastify, request.user.userId);
-        return reply.send(friends);
+        return reply.send({ friends });
       } catch (error) {
         fastify.log.error({
           error,
@@ -233,7 +409,9 @@ export default async function userRoutes(fastify: FastifyInstance) {
           msg: 'Error in GET /user/friends endpoint',
         });
         return reply.status(500).send({
-          error: 'Failed to fetch friends',
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Failed to fetch friends',
         });
       }
     }
@@ -243,10 +421,24 @@ export default async function userRoutes(fastify: FastifyInstance) {
     '/requests',
     {
       schema: {
+        tags: ['user', 'friends'],
+        description: 'Get user friend requests',
         querystring: getFriendRequestsQueryJsonSchema,
+        response: {
+          200: {
+            description: 'List of friend requests',
+            type: 'array',
+            items: friendRequestResponseJsonSchema,
+          },
+          500: {
+            description: 'Internal server error',
+            $ref: 'ErrorResponse#',
+          },
+        },
       },
     },
     async (request, reply) => {
+      //Default to incoming requests
       const { type = 'incoming' } = request.query;
 
       try {
@@ -264,7 +456,9 @@ export default async function userRoutes(fastify: FastifyInstance) {
           msg: 'Error in GET /user/requests endpoint',
         });
         return reply.status(500).send({
-          error: 'Failed to fetch friend requests',
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Failed to fetch friend requests',
         });
       }
     }

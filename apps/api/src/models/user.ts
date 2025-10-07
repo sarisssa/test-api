@@ -30,6 +30,7 @@ export interface DynamoDBUserItem {
 }
 
 export interface UserPublicProfile {
+  userId: string;
   phoneNumber: string;
   username?: string;
   emailAddress?: string;
@@ -38,9 +39,20 @@ export interface UserPublicProfile {
     totalMatches: number;
     wins: number;
     losses: number;
+    experience: number;
+    inGameCurrency: number;
+    capital: number;
   };
   profile?: {
     profilePictureUrl?: string;
     bio?: string;
   };
+  perks?: {
+    [perkId: string]: {
+      purchasedAt: string;
+      quantity: number;
+    };
+  };
+  createdAt: string;
+  lastLoggedIn?: string;
 }
