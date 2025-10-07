@@ -11,6 +11,7 @@ import authPlugin from './plugins/auth.js';
 import dynamodbPlugin from './plugins/dynamodb.js';
 import repositoriesPlugin from './plugins/repositories.js';
 import s3Plugin from './plugins/s3.js';
+import swaggerPlugin from './plugins/swagger.js';
 import twilioPlugin from './plugins/twilio.js';
 import assetRoutes from './routes/asset.js';
 import authRoutes from './routes/auth.js';
@@ -44,6 +45,7 @@ async function buildApp(): Promise<FastifyInstance> {
   initializePhoneHashSalt(fastify.config.PHONE_HASH_SALT);
 
   await fastify.register(cors);
+  await fastify.register(swaggerPlugin);
   await fastify.register(jwt, {
     secret: fastify.config.JWT_SECRET,
   });
