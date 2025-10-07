@@ -7,7 +7,14 @@ import {
   updateUsername,
   uploadProfilePicture,
 } from '../services/user.js';
-import { UpdateUsernameBody, updateUsernameJsonSchema } from '../types/user.js';
+import {
+  GetFriendRequestsQuery,
+  UpdateUsernameBody,
+  friendsResponseJsonSchema,
+  getFriendRequestsQueryJsonSchema,
+  matchesResponseJsonSchema,
+  updateUsernameJsonSchema,
+} from '../types/user.js';
 
 export default async function userRoutes(fastify: FastifyInstance) {
   fastify.get('/', async (request, reply) => {
@@ -40,30 +47,16 @@ export default async function userRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.put<{ Body: Omit<UpdateUsernameBody, 'userId'> }>(
+  fastify.put<{ Body: UpdateUsernameBody }>(
     '/username',
     {
       schema: {
-        body: {
-          ...updateUsernameJsonSchema,
-          required: ['username'],
-        },
+        body: updateUsernameJsonSchema,
       },
     },
     async (request, reply) => {
       try {
         const { username } = request.body;
-
-        if (
-          !username ||
-          typeof username !== 'string' ||
-          username.trim().length === 0
-        ) {
-          return reply
-            .status(400)
-            .send({ error: 'Valid username is required' });
-        }
-
         const updatedUser = await updateUsername(
           fastify,
           request.user.userId,
@@ -90,85 +83,99 @@ export default async function userRoutes(fastify: FastifyInstance) {
     }
   );
 
-  fastify.put('/profile-picture', async (request, reply) => {
-    try {
-      const data = await request.file();
+  fastify.put(
+    '/profile-picture',
 
-      if (!data) {
-        return reply.status(400).send({ error: 'No file uploaded.' });
-      }
+    async (request, reply) => {
+      try {
+        const file = await request.file();
 
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
-      if (!allowedTypes.includes(data.mimetype)) {
-        return reply.status(400).send({
-          error: 'Invalid file type. Only JPEG, PNG, and WebP are allowed.',
+        if (!file) {
+          return reply.status(400).send({ error: 'No file uploaded.' });
+        }
+
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowedTypes.includes(file.mimetype)) {
+          return reply.status(400).send({
+            error: 'Invalid file type. Only JPEG, PNG, and WebP are allowed.',
+          });
+        }
+
+        const buffer = await file.toBuffer();
+
+        const result = await uploadProfilePicture(fastify, {
+          userId: request.user.userId,
+          fileBuffer: buffer,
+          mimetype: file.mimetype,
+        });
+
+        return reply.send({
+          message: 'Profile picture updated successfully',
+          profilePictureUrl: result.profilePictureUrl,
+          user: result.user,
+        });
+      } catch (error) {
+        fastify.log.error({
+          error:
+            error instanceof Error
+              ? {
+                  message: error.message,
+                  stack: error.stack,
+                  name: error.name,
+                }
+              : error,
+          userId: request.user.userId,
+          msg: 'Error updating profile picture',
+        });
+
+        if (error instanceof Error && error.message === 'User not found') {
+          return reply.status(404).send({ error: 'User not found' });
+        }
+
+        if (
+          error instanceof Error &&
+          (error.message === 'S3_BUCKET_NAME not configured' ||
+            error.message === 'AWS_REGION not configured')
+        ) {
+          return reply.status(500).send({ error: error.message });
+        }
+
+        return reply.status(500).send({
+          error: 'Internal server error.',
+          details: error instanceof Error ? error.message : 'Unknown error',
         });
       }
-
-      const buffer = await data.toBuffer();
-
-      const result = await uploadProfilePicture(fastify, {
-        userId: request.user.userId,
-        fileBuffer: buffer,
-        mimetype: data.mimetype,
-      });
-
-      return reply.send({
-        message: 'Profile picture updated successfully',
-        profilePictureUrl: result.profilePictureUrl,
-        user: result.user,
-      });
-    } catch (error) {
-      fastify.log.error({
-        error:
-          error instanceof Error
-            ? {
-                message: error.message,
-                stack: error.stack,
-                name: error.name,
-              }
-            : error,
-        userId: request.user.userId,
-        msg: 'Error updating profile picture',
-      });
-
-      if (error instanceof Error && error.message === 'User not found') {
-        return reply.status(404).send({ error: 'User not found' });
-      }
-
-      if (
-        error instanceof Error &&
-        (error.message === 'S3_BUCKET_NAME not configured' ||
-          error.message === 'AWS_REGION not configured')
-      ) {
-        return reply.status(500).send({ error: error.message });
-      }
-
-      return reply.status(500).send({
-        error: 'Internal server error.',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      });
     }
-  });
+  );
 
-  fastify.get('/matches', async (request, reply) => {
-    try {
-      const matches = await getUserMatchHistory(fastify, request.user.userId);
+  fastify.get(
+    '/matches',
+    {
+      schema: {
+        response: {
+          200: matchesResponseJsonSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const matches = await getUserMatchHistory(fastify, request.user.userId);
 
-      return reply.send({
-        matches,
-        total: matches.length,
-      });
-    } catch (error) {
-      fastify.log.error({ error, msg: 'Error getting user matches' });
+        return reply.send({
+          matches,
+          total: matches.length,
+        });
+      } catch (error) {
+        fastify.log.error({ error, msg: 'Error getting user matches' });
 
-      if (error instanceof Error && error.message === 'User not found') {
-        return reply.status(404).send({ error: 'User not found' });
+        if (error instanceof Error && error.message === 'User not found') {
+          return reply.status(404).send({ error: 'User not found' });
+        }
+
+        return reply.status(500).send({ error: 'Internal server error' });
       }
-
-      return reply.status(500).send({ error: 'Internal server error' });
     }
-  });
+  );
 
   fastify.get('/invites', async (request, reply) => {
     try {
@@ -206,50 +213,60 @@ export default async function userRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.get('/friends', async (request, reply) => {
-    try {
-      const friends = await getUserFriends(fastify, request.user.userId);
-      return reply.send(friends);
-    } catch (error) {
-      fastify.log.error({
-        error,
-        userId: request.user.userId,
-        msg: 'Error in GET /user/friends endpoint',
-      });
-      return reply.status(500).send({
-        error: 'Failed to fetch friends',
-      });
+  fastify.get(
+    '/friends',
+    {
+      schema: {
+        response: {
+          200: friendsResponseJsonSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const friends = await getUserFriends(fastify, request.user.userId);
+        return reply.send(friends);
+      } catch (error) {
+        fastify.log.error({
+          error,
+          userId: request.user.userId,
+          msg: 'Error in GET /user/friends endpoint',
+        });
+        return reply.status(500).send({
+          error: 'Failed to fetch friends',
+        });
+      }
     }
-  });
+  );
 
-  fastify.get('/requests', async (request, reply) => {
-    const { type = 'incoming' } = request.query as {
-      type?: 'incoming' | 'outgoing';
-    };
+  fastify.get<{ Querystring: GetFriendRequestsQuery }>(
+    '/requests',
+    {
+      schema: {
+        querystring: getFriendRequestsQueryJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      const { type = 'incoming' } = request.query;
 
-    if (type !== 'incoming' && type !== 'outgoing') {
-      return reply.status(400).send({
-        error: 'Invalid type parameter. Must be "incoming" or "outgoing"',
-      });
+      try {
+        const requests = await getUserRequests(
+          fastify,
+          request.user.userId,
+          type
+        );
+        return reply.send(requests);
+      } catch (error) {
+        fastify.log.error({
+          error,
+          userId: request.user.userId,
+          type,
+          msg: 'Error in GET /user/requests endpoint',
+        });
+        return reply.status(500).send({
+          error: 'Failed to fetch friend requests',
+        });
+      }
     }
-
-    try {
-      const requests = await getUserRequests(
-        fastify,
-        request.user.userId,
-        type
-      );
-      return reply.send(requests);
-    } catch (error) {
-      fastify.log.error({
-        error,
-        userId: request.user.userId,
-        type,
-        msg: 'Error in GET /user/requests endpoint',
-      });
-      return reply.status(500).send({
-        error: 'Failed to fetch friend requests',
-      });
-    }
-  });
+  );
 }

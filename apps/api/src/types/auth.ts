@@ -1,28 +1,36 @@
-import { z } from 'zod';
-import { zodToJsonSchema } from 'zod-to-json-schema';
+export interface SendOtpBody {
+  phoneNumber: string;
+}
 
-export const sendOtpBodySchema = z.object({
-  phoneNumber: z
-    .string()
-    .min(10, 'Phone number must be at least 10 digits.')
-    .regex(
-      /^\+?\d{10,15}$/,
-      'Invalid phone number format. Must be E.164 format or a 10-15 digit number.'
-    ),
-});
-export type SendOtpBody = z.infer<typeof sendOtpBodySchema>;
+export interface VerifyOtpBody {
+  code: string;
+  phoneNumber: string;
+}
 
-export const verifyOtpBodySchema = z.object({
-  code: z.string().length(6, 'OTP code must be exactly 6 digits.'),
-  phoneNumber: z
-    .string()
-    .min(10, 'Phone number must be at least 10 digits.')
-    .regex(
-      /^\+?\d{10,15}$/,
-      'Invalid phone number format. Must be E.164 format or a 10-15 digit number.'
-    ),
-});
-export type VerifyOtpBody = z.infer<typeof verifyOtpBodySchema>;
+export const sendOtpJsonSchema = {
+  type: 'object',
+  properties: {
+    phoneNumber: {
+      type: 'string',
+      pattern: '^\\+?\\d{10,15}$',
+    },
+  },
+  required: ['phoneNumber'],
+  additionalProperties: false,
+} as const;
 
-export const sendOtpJsonSchema = zodToJsonSchema(sendOtpBodySchema);
-export const verifyOtpJsonSchema = zodToJsonSchema(verifyOtpBodySchema);
+export const verifyOtpJsonSchema = {
+  type: 'object',
+  properties: {
+    code: {
+      type: 'string',
+      pattern: '^\\d{6}$',
+    },
+    phoneNumber: {
+      type: 'string',
+      pattern: '^\\+?\\d{10,15}$',
+    },
+  },
+  required: ['code', 'phoneNumber'],
+  additionalProperties: false,
+} as const;

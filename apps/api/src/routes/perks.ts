@@ -1,9 +1,6 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { buyPerk, getAllPerks, getUserPerks } from '../services/perk.js';
-
-interface BuyPerkBody {
-  perkId: string;
-}
+import { BuyPerkBody, buyPerkJsonSchema } from '../types/perk.js';
 
 export default async function perkRoutes(fastify: FastifyInstance) {
   fastify.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -52,40 +49,42 @@ export default async function perkRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.post<{ Body: BuyPerkBody }>('/buy', async (request, reply) => {
-    const { perkId } = request.body;
+  fastify.post<{ Body: BuyPerkBody }>(
+    '/buy',
+    {
+      schema: {
+        body: buyPerkJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      const { perkId } = request.body;
 
-    if (!perkId) {
-      return reply.status(400).send({
-        error: 'Missing required field: perkId',
-      });
-    }
+      try {
+        const result = await buyPerk(fastify, request.user.userId, perkId);
 
-    try {
-      const result = await buyPerk(fastify, request.user.userId, perkId);
-
-      if (result.success) {
-        return reply.status(200).send({
-          success: true,
-          message: result.message,
-          newBalance: result.newBalance,
+        if (result.success) {
+          return reply.status(200).send({
+            success: true,
+            message: result.message,
+            newBalance: result.newBalance,
+          });
+        } else {
+          return reply.status(400).send({
+            success: false,
+            error: result.message,
+          });
+        }
+      } catch (error) {
+        fastify.log.error({
+          error,
+          userId: request.user.userId,
+          perkId,
+          msg: 'Error in POST /perks/buy endpoint',
         });
-      } else {
-        return reply.status(400).send({
-          success: false,
-          error: result.message,
+        return reply.status(500).send({
+          error: 'Failed to purchase perk',
         });
       }
-    } catch (error) {
-      fastify.log.error({
-        error,
-        userId: request.user.userId,
-        perkId,
-        msg: 'Error in POST /perks/buy endpoint',
-      });
-      return reply.status(500).send({
-        error: 'Failed to purchase perk',
-      });
     }
-  });
+  );
 }

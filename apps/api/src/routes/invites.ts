@@ -3,43 +3,59 @@ import {
   generateInviteLink,
   processInviteAcceptance,
 } from '../services/invite.js';
-
-interface InviteCodeParams {
-  inviteCode: string;
-}
+import {
+  createInviteResponseJsonSchema,
+  InviteCodeParams,
+  inviteCodeParamsJsonSchema,
+} from '../types/invite.js';
 
 export default async function inviteRoutes(fastify: FastifyInstance) {
-  fastify.post('/', async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const result = await generateInviteLink(fastify, request.user.userId);
+  fastify.post(
+    '/',
+    {
+      schema: {
+        response: {
+          201: createInviteResponseJsonSchema,
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const result = await generateInviteLink(fastify, request.user.userId);
 
-      return reply.status(201).send({
-        success: true,
-        inviteCode: result.inviteCode,
-        inviteUrl: result.inviteUrl,
-        createdAt: result.invite.createdAt,
-      });
-    } catch (error) {
-      fastify.log.error({
-        error,
-        senderId: request.user.userId,
-        msg: 'Error in POST /invites endpoint',
-      });
+        return reply.status(201).send({
+          success: true,
+          inviteCode: result.inviteCode,
+          inviteUrl: result.inviteUrl,
+          createdAt: result.invite.createdAt,
+        });
+      } catch (error) {
+        fastify.log.error({
+          error,
+          senderId: request.user.userId,
+          msg: 'Error in POST /invites endpoint',
+        });
 
-      if (error instanceof Error && error.message === 'Sender not found') {
-        return reply.status(404).send({
-          error: 'Sender not found',
+        if (error instanceof Error && error.message === 'Sender not found') {
+          return reply.status(404).send({
+            error: 'Sender not found',
+          });
+        }
+
+        return reply.status(500).send({
+          error: 'Failed to generate invite link',
         });
       }
-
-      return reply.status(500).send({
-        error: 'Failed to generate invite link',
-      });
     }
-  });
+  );
 
   fastify.get<{ Params: InviteCodeParams }>(
     '/:inviteCode',
+    {
+      schema: {
+        params: inviteCodeParamsJsonSchema,
+      },
+    },
     async (request, reply) => {
       const { inviteCode } = request.params;
 
@@ -80,9 +96,13 @@ export default async function inviteRoutes(fastify: FastifyInstance) {
     }
   );
 
-  //TODO: Probably don't need this
   fastify.post<{ Params: InviteCodeParams }>(
     '/:inviteCode/accept',
+    {
+      schema: {
+        params: inviteCodeParamsJsonSchema,
+      },
+    },
     async (request, reply) => {
       const { inviteCode } = request.params;
 
