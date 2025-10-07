@@ -1,4 +1,4 @@
-import { GetCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { FastifyInstance } from 'fastify';
 import { REDIS_KEYS } from '../constants.js';
 import { DynamoDBAssetItem } from '../models/asset.js';
@@ -13,8 +13,8 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
     limit: number = 20
   ): Promise<DynamoDBAssetItem[]> => {
     const params: ScanCommand['input'] = {
-      TableName: 'WageTable',
-      FilterExpression: 'contains(Symbol, :s) OR contains(#n, :s)',
+      TableName: fastify.config.DYNAMODB_TABLE_NAME,
+      FilterExpression: 'contains(sk, :s) OR contains(#n, :s)',
       ExpressionAttributeNames: {
         '#n': 'name',
       },
@@ -46,35 +46,32 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
   const fetchAssetByTickerFromDB = async (
     ticker: string
   ): Promise<DynamoDBAssetItem | null> => {
-    const assetTypes = ['STOCK', 'CRYPTO', 'COMMODITY'];
+    const upperTicker = ticker.toUpperCase();
+    const key = {
+      pk: `ASSET#${upperTicker}`,
+      sk: 'METADATA',
+    };
 
-    for (const assetType of assetTypes) {
-      try {
-        const result = await fastify.dynamodb.send(
-          new GetCommand({
-            TableName: 'WageTable',
-            Key: {
-              PK: `ASSET#${assetType}`,
-              SK: ticker,
-            },
-          })
-        );
+    try {
+      const result = await fastify.dynamodb.send(
+        new GetCommand({
+          TableName: fastify.config.DYNAMODB_TABLE_NAME,
+          Key: key,
+        })
+      );
 
-        if (result.Item) {
-          return result.Item as DynamoDBAssetItem;
-        }
-      } catch (error) {
-        logger.error({
-          error,
-          ticker,
-          assetType,
-          msg: 'Error fetching asset by ticker',
-        });
-        throw error;
+      if (result.Item) {
+        return result.Item as DynamoDBAssetItem;
       }
+      return null;
+    } catch (error) {
+      logger.error({
+        error,
+        ticker: upperTicker,
+        msg: 'Error fetching asset by ticker',
+      });
+      throw error;
     }
-
-    return null;
   };
 
   const getAssetDetailsByTicker = async (
@@ -110,11 +107,6 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
         });
       }
 
-      logger.info({
-        ticker,
-        msg: 'Asset ticker not in cache, checking DynamoDB',
-      });
-
       const asset = await fetchAssetByTickerFromDB(ticker);
 
       if (asset) {
@@ -149,9 +141,48 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
     }
   };
 
+  const updateAssetPrice = async (
+    ticker: string,
+    currentPrice: number,
+    lastUpdated: string
+  ): Promise<void> => {
+    try {
+      await fastify.dynamodb.send(
+        new UpdateCommand({
+          TableName: fastify.config.DYNAMODB_TABLE_NAME,
+          Key: {
+            pk: `ASSET#${ticker.toUpperCase()}`,
+            sk: 'METADATA',
+          },
+          UpdateExpression: 'SET currentPrice = :price, lastUpdated = :updated',
+          ExpressionAttributeValues: {
+            ':price': currentPrice,
+            ':updated': lastUpdated,
+          },
+        })
+      );
+
+      logger.info({
+        ticker,
+        currentPrice,
+        lastUpdated,
+        msg: 'Asset price updated in DynamoDB',
+      });
+    } catch (error) {
+      logger.error({
+        error,
+        ticker,
+        currentPrice,
+        msg: 'Error updating asset price in DynamoDB',
+      });
+      throw error;
+    }
+  };
+
   return {
     searchAssets,
     fetchAssetByTickerFromDB,
     getAssetDetailsByTicker,
+    updateAssetPrice,
   };
 };
