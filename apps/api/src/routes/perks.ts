@@ -28,22 +28,19 @@ export default async function perkRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.get('/user/:userId', async (request, reply) => {
-    const { userId } = request.params as { userId: string };
-
+  fastify.get('/my-perks', async (request, reply) => {
     try {
-      const userPerks = await getUserPerks(fastify, userId);
+      const userPerks = await getUserPerks(fastify, request.user.userId);
 
       return {
-        userId,
         perks: userPerks,
         count: userPerks.length,
       };
     } catch (error) {
       fastify.log.error({
         error,
-        userId,
-        msg: 'Error in GET /perks/user/:userId endpoint',
+        userId: request.user.userId,
+        msg: 'Error in GET /perks/my-perks endpoint',
       });
       return reply.status(500).send({
         error: 'Failed to fetch user perks',
@@ -52,37 +49,24 @@ export default async function perkRoutes(fastify: FastifyInstance) {
   });
 
   fastify.post('/buy', async (request, reply) => {
-    const { userId, perkId } = request.body as {
-      userId: string;
+    const { perkId } = request.body as {
       perkId: string;
     };
 
-    if (!userId || !perkId) {
+    if (!perkId) {
       return reply.status(400).send({
-        error: 'Missing required fields: userId and perkId',
+        error: 'Missing required field: perkId',
       });
     }
 
     try {
-      const result = await buyPerk(fastify, userId, perkId);
+      const result = await buyPerk(fastify, request.user.userId, perkId);
 
       if (result.success) {
         return reply.status(200).send({
           success: true,
           message: result.message,
           newBalance: result.newBalance,
-        });
-      } else if (result.reason === 'TIER_REQUIREMENT') {
-        return reply.status(409).send({
-          success: false,
-          error: result.message,
-          reason: 'TIER_REQUIREMENT',
-        });
-      } else if (result.reason === 'INSUFFICIENT_FUNDS') {
-        return reply.status(400).send({
-          success: false,
-          error: result.message,
-          reason: 'INSUFFICIENT_FUNDS',
         });
       } else {
         return reply.status(400).send({
@@ -93,7 +77,7 @@ export default async function perkRoutes(fastify: FastifyInstance) {
     } catch (error) {
       fastify.log.error({
         error,
-        userId,
+        userId: request.user.userId,
         perkId,
         msg: 'Error in POST /perks/buy endpoint',
       });

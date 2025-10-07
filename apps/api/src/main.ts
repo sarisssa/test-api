@@ -7,6 +7,7 @@ import redis from '@fastify/redis';
 import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { FastifyInstance } from 'fastify';
 import { envSchema, type Env } from './config/env.js';
+import authPlugin from './plugins/auth.js';
 import dynamodbPlugin from './plugins/dynamodb.js';
 import repositoriesPlugin from './plugins/repositories.js';
 import s3Plugin from './plugins/s3.js';
@@ -47,6 +48,7 @@ async function buildApp(): Promise<FastifyInstance> {
     secret: fastify.config.JWT_SECRET,
   });
   await fastify.register(auth);
+  await fastify.register(authPlugin);
 
   await fastify.register(redis, {
     url: fastify.config.REDIS_URL,
