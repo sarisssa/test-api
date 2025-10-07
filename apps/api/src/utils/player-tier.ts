@@ -44,3 +44,4 @@ export function getNextTierThreshold(currentXP: number): TierThreshold | null {
 
   return null;
 }
+

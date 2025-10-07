@@ -1,85 +1,38 @@
 import { FastifyInstance } from 'fastify';
-import { getUserFriends, getUserRequests } from '../services/friend.js';
 
 export default async function friendRoutes(fastify: FastifyInstance) {
-  fastify.get('/users/:userId/friends', async (request, reply) => {
-    const { userId } = request.params as { userId: string };
-
-    try {
-      const friends = await getUserFriends(fastify, userId);
-      return reply.send(friends);
-    } catch (error) {
-      fastify.log.error({
-        error,
-        userId,
-        msg: 'Error in GET /users/:userId/friends endpoint',
-      });
-      return reply.status(500).send({
-        error: 'Failed to fetch friends',
-      });
-    }
-  });
-
-  fastify.get('/users/:userId/requests', async (request, reply) => {
-    const { userId } = request.params as { userId: string };
-    const { direction = 'incoming' } = request.query as {
-      direction?: 'incoming' | 'outgoing';
-    };
-
-    if (direction !== 'incoming' && direction !== 'outgoing') {
-      return reply.status(400).send({
-        error: 'Invalid direction parameter. Must be "incoming" or "outgoing"',
-      });
-    }
-
-    try {
-      const requests = await getUserRequests(fastify, userId, direction);
-      return reply.send(requests);
-    } catch (error) {
-      fastify.log.error({
-        error,
-        userId,
-        direction,
-        msg: 'Error in GET /users/:userId/requests endpoint',
-      });
-      return reply.status(500).send({
-        error: 'Failed to fetch friend requests',
-      });
-    }
-  });
-
   fastify.post('/requests', async (request, reply) => {
-    const { senderId, receiverId } = request.body as {
-      senderId: string;
+    const { receiverId } = request.body as {
       receiverId: string;
     };
 
-    if (!senderId || !receiverId) {
+    if (!receiverId) {
       return reply.status(400).send({
-        error: 'Missing required fields: senderId and receiverId',
+        error: 'Missing required field: receiverId',
       });
     }
 
-    if (senderId === receiverId) {
+    if (request.user.userId === receiverId) {
       return reply.status(400).send({
         error: 'Cannot send friend request to yourself',
       });
     }
 
     try {
-      const request = await fastify.repositories.friend.createFriendRequest(
-        senderId,
-        receiverId
-      );
+      const friendRequest =
+        await fastify.repositories.friend.createFriendRequest(
+          request.user.userId,
+          receiverId
+        );
 
       return reply.status(201).send({
-        requestId: request.requestId,
+        requestId: friendRequest.requestId,
         message: 'Friend request sent successfully',
       });
     } catch (error) {
       fastify.log.error({
         error,
-        senderId,
+        senderId: request.user.userId,
         receiverId,
         msg: 'Error in POST /requests endpoint',
       });
@@ -91,14 +44,13 @@ export default async function friendRoutes(fastify: FastifyInstance) {
 
   fastify.patch('/requests/:requestId', async (request, reply) => {
     const { requestId } = request.params as { requestId: string };
-    const { userId, status } = request.body as {
-      userId: string;
+    const { status } = request.body as {
       status: 'accepted' | 'rejected';
     };
 
-    if (!userId || !status) {
+    if (!status) {
       return reply.status(400).send({
-        error: 'Missing required fields: userId and status',
+        error: 'Missing required field: status',
       });
     }
 
@@ -118,7 +70,7 @@ export default async function friendRoutes(fastify: FastifyInstance) {
         });
       }
 
-      if (friendRequest.receiverId !== userId) {
+      if (friendRequest.receiverId !== request.user.userId) {
         return reply.status(403).send({
           error: 'Not authorized to respond to this request',
         });
@@ -143,7 +95,7 @@ export default async function friendRoutes(fastify: FastifyInstance) {
       fastify.log.error({
         error,
         requestId,
-        userId,
+        userId: request.user.userId,
         status,
         msg: 'Error in PATCH /requests/:requestId endpoint',
       });
@@ -153,23 +105,25 @@ export default async function friendRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.delete('/users/:userId/friends/:friendId', async (request, reply) => {
-    const { userId, friendId } = request.params as {
-      userId: string;
+  fastify.delete('/friends/:friendId', async (request, reply) => {
+    const { friendId } = request.params as {
       friendId: string;
     };
 
     try {
-      await fastify.repositories.friend.deleteFriendship(userId, friendId);
+      await fastify.repositories.friend.deleteFriendship(
+        request.user.userId,
+        friendId
+      );
       return reply.status(200).send({
         message: 'Friend removed successfully',
       });
     } catch (error) {
       fastify.log.error({
         error,
-        userId,
+        userId: request.user.userId,
         friendId,
-        msg: 'Error in DELETE /users/:userId/friends/:friendId endpoint',
+        msg: 'Error in DELETE /friends/:friendId endpoint',
       });
       return reply.status(500).send({
         error: 'Failed to remove friend',

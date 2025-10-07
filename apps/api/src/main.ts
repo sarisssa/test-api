@@ -16,7 +16,7 @@ import assetRoutes from './routes/asset.js';
 import authRoutes from './routes/auth.js';
 import friendRoutes from './routes/friends.js';
 import healthRoutes from './routes/health.js';
-import inviteRoutes, { userInviteRoutes } from './routes/invites.js';
+import inviteRoutes from './routes/invites.js';
 import matchGatewayRoutes from './routes/match-gateway.js';
 import perkRoutes from './routes/perks.js';
 import researchWebSocketRoutes from './routes/research-websocket.js';
@@ -79,7 +79,6 @@ async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(inviteRoutes, { prefix: '/invites' });
   await fastify.register(userRoutes, { prefix: '/user' });
   await fastify.register(friendRoutes, { prefix: '/friends' });
-  await fastify.register(userInviteRoutes, { prefix: '/users' });
 
   return fastify;
 }

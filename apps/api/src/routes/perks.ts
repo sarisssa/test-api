@@ -1,6 +1,10 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { buyPerk, getAllPerks, getUserPerks } from '../services/perk.js';
 
+interface BuyPerkBody {
+  perkId: string;
+}
+
 export default async function perkRoutes(fastify: FastifyInstance) {
   fastify.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -48,10 +52,8 @@ export default async function perkRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.post('/buy', async (request, reply) => {
-    const { perkId } = request.body as {
-      perkId: string;
-    };
+  fastify.post<{ Body: BuyPerkBody }>('/buy', async (request, reply) => {
+    const { perkId } = request.body;
 
     if (!perkId) {
       return reply.status(400).send({

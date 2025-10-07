@@ -148,10 +148,9 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     try {
       const scanParams = {
         TableName: fastify.config.DYNAMODB_TABLE_NAME,
-        FilterExpression: 'userId = :userId AND EntityType = :entityType',
+        FilterExpression: 'userId = :userId',
         ExpressionAttributeValues: {
           ':userId': userId,
-          ':entityType': 'User',
         },
       };
 
