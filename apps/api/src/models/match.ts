@@ -19,7 +19,11 @@ export interface DynamoDBMatchItem {
   matchStartedAt?: string;
   matchTentativeEndTime?: string;
   matchEndedAt?: string;
+  matchSettlementExecutionArn?: string;
+  completionReason?: 'time_expired' | 'forfeited' | 'manual';
   winner?: string;
+  loser?: string;
+  finalScores?: Record<string, number>;
 
   // --- Match-Level Metadata for Price Updates ---
   lastPriceUpdateAt?: string;

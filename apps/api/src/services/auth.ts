@@ -1,5 +1,12 @@
 import { FastifyInstance, FastifyRequest } from 'fastify';
+import { DynamoDBUserItem } from '../models/user.js';
 import { formatPhoneNumber } from '../utils/phone-utils.js';
+import {
+  ACCESS_TOKEN_EXPIRES_IN,
+  calculateRefreshTokenExpiry,
+  generateRefreshToken,
+  hashRefreshToken,
+} from '../utils/token-utils.js';
 import { createUser, findUserByPhone, updateUserLastLogin } from './user.js';
 
 export const sendOtp = async (
@@ -35,11 +42,49 @@ export const sendOtp = async (
   }
 };
 
+const issueTokensForUser = async (
+  fastify: FastifyInstance,
+  user: DynamoDBUserItem
+) => {
+  const accessToken = fastify.jwt.sign(
+    {
+      userId: user.userId,
+      phoneNumber: user.phoneNumber,
+      type: 'access_token',
+    },
+    { expiresIn: ACCESS_TOKEN_EXPIRES_IN }
+  );
+
+  const { token: refreshToken, tokenId } = generateRefreshToken();
+  const hashedToken = hashRefreshToken(refreshToken);
+  const { expiresAtIso, expiresAtEpochSeconds } = calculateRefreshTokenExpiry();
+
+  await fastify.repositories.refreshToken.persistRefreshToken({
+    pk: `REFRESH#${hashedToken}`,
+    sk: 'REFRESH',
+    PK: `REFRESH#${hashedToken}`,
+    SK: 'REFRESH',
+    EntityType: 'RefreshToken',
+    tokenId,
+    hashedToken,
+    userId: user.userId,
+    phoneNumber: user.phoneNumber,
+    createdAt: new Date().toISOString(),
+    expiresAt: expiresAtIso,
+    expiresAtEpochSeconds,
+  });
+
+  return {
+    accessToken,
+    refreshToken,
+    refreshTokenExpiresAt: expiresAtIso,
+  };
+};
+
 export const verifyOtp = async (
   fastify: FastifyInstance,
   phoneNumber: string,
-  code: string,
-  request?: FastifyRequest
+  code: string
 ) => {
   phoneNumber = formatPhoneNumber(phoneNumber);
 
@@ -86,40 +131,14 @@ export const verifyOtp = async (
       });
     }
 
-    const accessToken = fastify.jwt.sign(
-      {
-        userId: user.userId,
-        phoneNumber: user.phoneNumber,
-        type: 'access_token',
-      },
-      { expiresIn: '10d' }
-    );
-
-    const refreshToken = fastify.jwt.sign(
-      {
-        userId: user.userId,
-        phoneNumber: user.phoneNumber,
-        type: 'refresh_token',
-      },
-      { expiresIn: '30d' }
-    );
-
-    await fastify.repositories.auth.storeRefreshToken(
-      user.userId,
-      refreshToken,
-      30,
-      request
-        ? {
-            userAgent: request.headers['user-agent'],
-            ipAddress: request.ip,
-          }
-        : undefined
-    );
+    const tokens = await issueTokensForUser(fastify, user);
 
     return {
       isNewUser,
-      accessToken,
-      refreshToken,
+      token: tokens.accessToken,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
       user: {
         userId: user.userId,
         phoneNumber: user.phoneNumber,
@@ -143,6 +162,45 @@ export const verifyOtp = async (
     }
     throw new Error('An error occurred during verification. Please try again.');
   }
+};
+
+export const refreshSession = async (
+  fastify: FastifyInstance,
+  refreshToken: string
+) => {
+  const hashedToken = hashRefreshToken(refreshToken);
+  const storedToken =
+    await fastify.repositories.refreshToken.getRefreshTokenByHash(hashedToken);
+
+  if (!storedToken) {
+    throw new Error('Invalid refresh token');
+  }
+
+  const now = Date.now();
+  if (
+    storedToken.expiresAt &&
+    new Date(storedToken.expiresAt).getTime() <= now
+  ) {
+    await fastify.repositories.refreshToken.deleteRefreshTokenByHash(
+      hashedToken
+    );
+    throw new Error('Expired refresh token');
+  }
+
+  await fastify.repositories.refreshToken.deleteRefreshTokenByHash(hashedToken);
+
+  const user = await fastify.repositories.user.getUserById(storedToken.userId);
+  if (!user) {
+    throw new Error('User not found for refresh token');
+  }
+
+  const tokens = await issueTokensForUser(fastify, user);
+
+  return {
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+    refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
+  };
 };
 
 export const refreshAuthTokens = async (

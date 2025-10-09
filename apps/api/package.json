@@ -2,9 +2,9 @@
   "name": "api",
   "version": "0.1.0",
   "dependencies": {
-    "@aws-sdk/client-apigatewaymanagementapi": "^3.844.0",
     "@aws-sdk/client-dynamodb": "^3.846.0",
     "@aws-sdk/client-s3": "^3.899.0",
+    "@aws-sdk/client-sfn": "^3.899.0",
     "@aws-sdk/lib-dynamodb": "^3.846.0",
     "@fastify/auth": "^5.0.0",
     "@fastify/cors": "^10.0.0",
@@ -16,6 +16,7 @@
     "@fastify/swagger": "^9.0.0",
     "@fastify/swagger-ui": "^5.0.0",
     "@fastify/websocket": "^11.2.0",
+    "ioredis": "^5.3.2",
     "@types/uuid": "^10.0.0",
     "ajv": "^8.17.1",
     "dotenv": "^16.6.1",
@@ -36,7 +37,17 @@
     "create-table": "node --loader ts-node/esm src/scripts/create-table.ts",
     "dev": "tsx watch src/main.ts",
     "lint": "eslint src/**/*.ts",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "seed-db": "node --loader ts-node/esm src/scripts/seed-db.ts",
+    "seed-users": "tsx src/scripts/seed-users.ts",
+    "seed-perks": "tsx src/scripts/seed-perks.ts",
+    "setup:system": "tsx src/scripts/setup-system.ts",
+    "create-in-progress-match": "tsx src/scripts/create-in-progress-match.ts",
+    "create-partial-ready-match": "tsx src/scripts/create-partial-ready-match.ts",
+    "create-test-players": "tsx src/scripts/create-test-players.ts",
+    "setup:step-functions": "tsx src/scripts/setup-step-function.ts",
+    "deploy:lambdas": "tsx src/step-functions/deploy.ts",
+    "system:test": "tsx src/scripts/system-check.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.29.0",

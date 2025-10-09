@@ -11,6 +11,8 @@ export interface PlayerAsset {
   initialPrice: number;
   shares: number;
   endPrice?: number;
+  currentPrice?: number;
+  lastUpdatedAt?: string;
 }
 
 export interface PlayerAssetSelection {

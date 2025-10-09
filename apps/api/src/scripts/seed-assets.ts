@@ -6,11 +6,19 @@ import {
 import { config } from 'dotenv';
 import fs from 'fs/promises';
 import path from 'path';
+import { DynamoDBAssetItem } from '../models/asset.js';
+import {
+  COMMODITY_ASSETS,
+  CRYPTO_ASSETS,
+  STOCK_TICKERS,
+} from './lib/asset-lists.js';
 
 config();
 
 const TABLE_NAME = 'wage-main-dev';
 const DATA_DIR = 'data';
+
+type AssetType = 'STOCK' | 'CRYPTO' | 'COMMODITY';
 
 const client = new DynamoDBClient({
   region: 'us-east-1',
@@ -52,14 +60,34 @@ interface CommodityData {
   name: string;
   category: string;
   description: string;
-  assetType: 'COMMODITIES';
+  assetType: 'COMMODITY';
 }
 
 interface CommoditiesFile {
   data: CommodityData[];
 }
 
-function transformStockToDynamoDB(stock: StockData): any {
+function buildAssetPriceItem(
+  assetType: AssetType,
+  symbol: string,
+  currentPrice = 0
+): Record<string, unknown> {
+  const lastUpdated = new Date().toISOString();
+  return {
+    PK: `ASSET#${assetType}`,
+    SK: symbol,
+    AssetType: assetType,
+    Symbol: symbol,
+    currentPrice,
+    lastUpdated,
+    EntityType: 'AssetPrice',
+  };
+}
+
+const toWriteItem = (item: DynamoDBAssetItem): Record<string, unknown> =>
+  item as unknown as Record<string, unknown>;
+
+function transformStockToDynamoDB(stock: StockData): DynamoDBAssetItem {
   return {
     pk: `ASSET#${stock.symbol}`,
     sk: `METADATA`,
@@ -116,7 +144,7 @@ function transformCommodityToDynamoDB(commodity: CommodityData): any {
   };
 }
 
-async function batchWrite(items: any[]) {
+async function batchWrite(items: Array<Record<string, unknown>>) {
   const BATCH_SIZE = 25; // DynamoDB batch write limit
   const batches = [];
 
@@ -157,11 +185,42 @@ async function batchWrite(items: any[]) {
 async function seedAllAssets() {
   console.log('🚀 Starting comprehensive asset seeding...');
 
-  const allAssets: any[] = [];
+  const metadataBySymbol = new Map<string, DynamoDBAssetItem>();
+  const priceItems: Array<Record<string, unknown>> = [];
+  const priceKeys = new Set<string>();
+
+  const addMetadata = (item: DynamoDBAssetItem) => {
+    metadataBySymbol.set(item.Symbol, item);
+  };
+
+  const addPriceRecord = (assetType: AssetType, symbol: string) => {
+    const key = `${assetType}#${symbol}`;
+    if (priceKeys.has(key)) {
+      return;
+    }
+    priceKeys.add(key);
+    priceItems.push(buildAssetPriceItem(assetType, symbol));
+  };
 
   try {
     console.log('📈 Processing stock data...');
-    const files = await fs.readdir(DATA_DIR);
+    let files: string[] = [];
+    try {
+      files = await fs.readdir(DATA_DIR);
+    } catch (error) {
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        (error as { code?: string }).code === 'ENOENT'
+      ) {
+        console.warn(
+          `  ⚠️  Data directory '${DATA_DIR}' not found. Skipping metadata seed files.`
+        );
+      } else {
+        throw error;
+      }
+    }
     const stockFiles = files.filter(
       file =>
         file.endsWith('.json') &&
@@ -175,8 +234,9 @@ async function seedAllAssets() {
         const fileContent = await fs.readFile(filePath, 'utf-8');
         const stockData: StockData = JSON.parse(fileContent);
 
-        const dynamoItem = transformStockToDynamoDB(stockData);
-        allAssets.push(dynamoItem);
+        const metadataItem = transformStockToDynamoDB(stockData);
+        addMetadata(metadataItem);
+        addPriceRecord('STOCK', stockData.symbol);
 
         console.log(`  ✓ Processed stock: ${stockData.symbol}`);
       } catch (error) {
@@ -193,8 +253,9 @@ async function seedAllAssets() {
       const cryptoData: CryptoData[] = JSON.parse(cryptoContent);
 
       for (const crypto of cryptoData) {
-        const dynamoItem = transformCryptoToDynamoDB(crypto);
-        allAssets.push(dynamoItem);
+        const metadataItem = transformCryptoToDynamoDB(crypto);
+        addMetadata(metadataItem);
+        addPriceRecord('CRYPTO', crypto.symbol);
         console.log(`  ✓ Processed crypto: ${crypto.symbol}`);
       }
     } catch (error) {
@@ -210,27 +271,89 @@ async function seedAllAssets() {
       const commoditiesFile: CommoditiesFile = JSON.parse(commoditiesContent);
 
       for (const commodity of commoditiesFile.data) {
-        const dynamoItem = transformCommodityToDynamoDB(commodity);
-        allAssets.push(dynamoItem);
+        const metadataItem = transformCommodityToDynamoDB(commodity);
+        addMetadata(metadataItem);
+        addPriceRecord('COMMODITY', commodity.symbol);
         console.log(`  ✓ Processed commodity: ${commodity.symbol}`);
       }
     } catch (error) {
       console.warn('  ⚠️  Failed to process commodities data:', error);
     }
 
-    console.log(`\n💾 Writing ${allAssets.length} total assets to DynamoDB...`);
-    await batchWrite(allAssets);
+    for (const symbol of STOCK_TICKERS) {
+      if (!metadataBySymbol.has(symbol)) {
+        addMetadata({
+          PK: `ASSET#${symbol}`,
+          SK: `METADATA#${symbol}`,
+          EntityType: 'Asset',
+          AssetType: 'STOCK',
+          Symbol: symbol,
+          name: symbol,
+          currentPrice: 0,
+          lastUpdated: new Date().toISOString(),
+        });
+      }
+      addPriceRecord('STOCK', symbol);
+    }
 
-    console.log(`\n🎉 Successfully seeded ${allAssets.length} assets!`);
-    console.log(
-      `   📈 Stocks: ${allAssets.filter(a => a.AssetType === 'STOCK').length}`
-    );
-    console.log(
-      `   💰 Crypto: ${allAssets.filter(a => a.AssetType === 'CRYPTO').length}`
-    );
-    console.log(
-      `   🛢️  Commodities: ${allAssets.filter(a => a.AssetType === 'COMMODITY').length}`
-    );
+    for (const asset of CRYPTO_ASSETS) {
+      if (!metadataBySymbol.has(asset.symbol)) {
+        addMetadata({
+          PK: `ASSET#${asset.symbol}`,
+          SK: `METADATA#${asset.symbol}`,
+          EntityType: 'Asset',
+          AssetType: 'CRYPTO',
+          Symbol: asset.symbol,
+          name: asset.name,
+          currentPrice: 0,
+          lastUpdated: new Date().toISOString(),
+          description: asset.description,
+        });
+      }
+      addPriceRecord('CRYPTO', asset.symbol);
+    }
+
+    for (const asset of COMMODITY_ASSETS) {
+      if (!metadataBySymbol.has(asset.symbol)) {
+        addMetadata({
+          PK: `ASSET#${asset.symbol}`,
+          SK: `METADATA#${asset.symbol}`,
+          EntityType: 'Asset',
+          AssetType: 'COMMODITY',
+          Symbol: asset.symbol,
+          name: asset.name,
+          currentPrice: 0,
+          lastUpdated: new Date().toISOString(),
+          description: asset.description,
+        });
+      }
+      addPriceRecord('COMMODITY', asset.symbol);
+    }
+
+    const metadataItems = Array.from(metadataBySymbol.values());
+    const counts = {
+      stock: metadataItems.filter(item => item.AssetType === 'STOCK').length,
+      crypto: metadataItems.filter(item => item.AssetType === 'CRYPTO').length,
+      commodity: metadataItems.filter(item => item.AssetType === 'COMMODITY')
+        .length,
+    };
+
+    const allItems: Array<Record<string, unknown>> = [
+      ...metadataItems.map(toWriteItem),
+      ...priceItems,
+    ];
+
+    const totalAssets = counts.stock + counts.crypto + counts.commodity;
+    const priceRecordCount = priceItems.length;
+
+    console.log(`\n💾 Writing ${allItems.length} total items to DynamoDB...`);
+    await batchWrite(allItems);
+
+    console.log(`\n🎉 Successfully seeded ${totalAssets} assets!`);
+    console.log(`   📈 Stocks: ${counts.stock}`);
+    console.log(`   💰 Crypto: ${counts.crypto}`);
+    console.log(`   🛢️  Commodities: ${counts.commodity}`);
+    console.log(`   💾 Price records: ${priceRecordCount}`);
   } catch (error) {
     console.error('💥 Fatal error during seeding:', error);
     process.exit(1);

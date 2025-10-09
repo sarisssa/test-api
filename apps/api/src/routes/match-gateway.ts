@@ -1,0 +1,112 @@
+import { SocketStream } from '@fastify/websocket';
+import { FastifyInstance } from 'fastify';
+import { v4 as uuidv4 } from 'uuid';
+import { addConnection, removeConnection } from '../services/connection-manager.js';
+import { parseAndHandle } from '../ws/actions.js';
+
+//TODO: Extract user id from JWT, do not pass user id into the payload!
+//TODO: Eventually move to AWS API Gateway - do not leverage local Fastify websocket
+export default async function matchGatewayRoutes(fastify: FastifyInstance) {
+  fastify.register(async function (fastify) {
+    fastify.get(
+      '/ws',
+      {
+        websocket: true,
+      } as const,
+      async (connection: SocketStream, req) => {
+        const connectionId = uuidv4();
+
+        (connection.socket as any).id = connectionId; // Use 'as any' or proper type augmentation
+
+        // Register the connection in the local Fastify instance
+        addConnection(connectionId, connection.socket as any);
+
+        // Handshake auth: accept JWT via query (?token=) or Authorization header
+        let userId: string | null = null
+        try {
+          const url = new URL(req.url, 'http://localhost')
+          const token = (url.searchParams.get('token') || req.headers['authorization']?.toString().replace(/^[Bb]earer\s+/, '') || '').trim()
+          if (!token) throw new Error('missing_token')
+          const decoded = fastify.jwt.verify(token) as { userId?: string }
+          if (!decoded?.userId) throw new Error('missing_user')
+          userId = decoded.userId
+        } catch (err) {
+          fastify.log.warn({ err, connectionId }, 'WebSocket auth failed')
+          connection.socket.send(JSON.stringify({ type: 'error', message: 'unauthorized' }))
+          connection.socket.close()
+          return
+        }
+
+        fastify.log.info({ connectionId, userId }, 'Client connected to matchmaking')
+
+        connection.socket.on('message', async message => {
+          fastify.log.info({
+            rawMessage: message.toString(),
+            msg: 'Received raw message',
+          });
+
+          try {
+            const data = JSON.parse(message.toString());
+            const result = await parseAndHandle(
+              { fastify, connectionId, userId },
+              data
+            )
+            if (result) {
+              connection.socket.send(JSON.stringify(result))
+            }
+          } catch (error) {
+            if (error instanceof Error) {
+              fastify.log.error(
+                {
+                  error: error,
+                  message: error.message,
+                  stack: error.stack,
+                  connectionId: connectionId,
+                  inputMessage: message.toString(),
+                },
+                'Error handling WebSocket message'
+              );
+            } else {
+              fastify.log.error(
+                {
+                  error: error,
+                  connectionId: connectionId,
+                  inputMessage: message.toString(),
+                },
+                'Unknown error type handling WebSocket message'
+              );
+            }
+
+            connection.socket.send(
+              JSON.stringify({
+                type: 'error',
+                message: 'Failed to process request',
+              })
+            );
+          }
+        });
+
+        connection.socket.on('error', error => {
+          fastify.log.error(
+            { error: error, connectionId: connectionId },
+            'WebSocket error'
+          );
+        });
+
+        connection.socket.on('close', async () => {
+          const currentConnectionId = (connection.socket as any).id; // Retrieve the ID
+
+          // Remove the connection from the local map on socket close
+          removeConnection(currentConnectionId);
+
+          fastify.log.info(
+            { connectionId: currentConnectionId, userId },
+            `Client disconnected from matchmaking`
+          );
+          // TODO: Clean up player data from Redis when implementing disconnect handling
+          // Use currentConnectionId here for cleanup
+        });
+      }
+    );
+  });
+}

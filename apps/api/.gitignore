@@ -5,3 +5,13 @@ dist/
 data/
 
 .env
+
+.build/
+# Env files
+.env
+.env.local
+
+# Step Functions local build artifacts
+src/step-functions/.build/
+src/step-functions/.build/*
+src/step-functions/*.zip

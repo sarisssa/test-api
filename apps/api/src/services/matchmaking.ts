@@ -21,6 +21,18 @@ export const joinMatchmakingWithSession = async (
   connectionId: string
 ): Promise<boolean> => {
   try {
+    // Prod/cloud guardrail: limit concurrent matches per user
+    // Default is disabled (0). For initial rollout, set to 1 in prod; later raise to 3.
+    const rawLimit = fastify.config.MAX_CONCURRENT_MATCHES ?? process.env.MAX_CONCURRENT_MATCHES ?? '0'
+    const maxConcurrent = Number.parseInt(rawLimit, 10) || 0
+    if (fastify.config.NODE_ENV !== 'development' && maxConcurrent > 0) {
+      const activeCount = await fastify.repositories.match.countInProgressMatchesForUser(userId)
+      if (activeCount >= maxConcurrent) {
+        fastify.log.info({ userId, activeCount, maxConcurrent }, 'Player at concurrent match limit; not queuing for matchmaking')
+        return false
+      }
+    }
+
     const playerAdded =
       await fastify.repositories.matchmaking.addPlayerToMatchmaking(
         userId,

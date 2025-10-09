@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { Redis } from 'ioredis';
 import { MATCHMAKING_JOB_QUEUE_LIST } from '../constants.js';
 import { MatchmakingJob } from '../types/matchmaking.js';
+import { createRedisClient } from '../utils/redis.js';
 import { handlePlayerCancelled, handlePlayerJoined } from './matchmaking.js';
 
 let workerRedis: Redis | null = null;
@@ -16,7 +17,13 @@ export const startMatchmakingWorker = async (fastify: FastifyInstance) => {
   isWorkerRunning = true;
   fastify.log.info('Starting matchmaking worker...');
 
-  workerRedis = new Redis(fastify.config.REDIS_URL);
+  workerRedis = createRedisClient(
+    fastify.config.REDIS_URL,
+    fastify.config.REDIS_TLS_REJECT_UNAUTHORIZED,
+    {
+      reconnectOnError: () => true
+    }
+  );
 
   const shutdown = async () => {
     fastify.log.info('Shutting down matchmaking worker...');
