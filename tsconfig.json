@@ -3,7 +3,9 @@
     "target": "ES2020",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2020"],
+    "lib": [
+      "ES2020"
+    ],
     "strict": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
@@ -14,14 +16,31 @@
     "sourceMap": true,
     "composite": true,
     "resolveJsonModule": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
   "files": [],
-  "exclude": ["node_modules", "dist", "build", "coverage", "**/*.test.ts", "**/*.spec.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ],
   "references": [
-    { "path": "./packages/wage-shared" },
-    { "path": "./apps/asset-manager" },
-    { "path": "./apps/match-processor" },
-    { "path": "./apps/api" }
+    {
+      "path": "./packages/wage-shared"
+    },
+    {
+      "path": "./apps/asset-manager"
+    },
+    {
+      "path": "./apps/match-processor"
+    },
+    {
+      "path": "./apps/api"
+    }
   ]
 }

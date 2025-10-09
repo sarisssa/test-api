@@ -61,7 +61,7 @@ export const startWebSocketMessageSubscriber = async (
     fastify.config.REDIS_TLS_REJECT_UNAUTHORIZED
   );
 
-  subRedis.on('message', async (channel: string, message: string) => {
+  subRedis!.on('message', async (channel: string, message: string) => {
     if (channel === WEBSOCKET_OUTGOING_CHANNEL) {
       try {
         const messageData = JSON.parse(message);
@@ -108,14 +108,14 @@ export const startWebSocketMessageSubscriber = async (
     }
   });
 
-  subRedis.on('error', error => {
+  subRedis!.on('error', error => {
     if (isSubscriberRunning) {
       fastify.log.error({ error, msg: 'Redis subscriber error' });
     }
   });
 
   // Subscribe to the websocket outgoing channel
-  await subRedis.subscribe(WEBSOCKET_OUTGOING_CHANNEL);
+  await subRedis!.subscribe(WEBSOCKET_OUTGOING_CHANNEL);
   fastify.log.info(
     `Subscribed to Redis channel: ${WEBSOCKET_OUTGOING_CHANNEL}`
   );

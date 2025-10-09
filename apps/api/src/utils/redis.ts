@@ -31,7 +31,7 @@ export const buildFastifyRedisOptions = (
     }
   }
 
-  return options
+  return options;
 }
 
 export const createRedisClient = (
@@ -49,5 +49,5 @@ export const createRedisClient = (
     }
   }
 
-  return new Redis(url, options)
+  return new Redis.Redis(url, options)
 }

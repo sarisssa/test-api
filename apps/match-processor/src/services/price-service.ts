@@ -1,4 +1,4 @@
-import { TickerPriceMap } from '../types'
+import { TickerPriceMap } from '../types.js'
 
 const TWELVE_DATA_API_KEY = process.env.TWELVE_DATA_API_KEY
 
@@ -22,7 +22,7 @@ export const fetchCurrentPrices = async (tickers: string[]): Promise<TickerPrice
       )
     }
 
-    const priceData: TickerPriceMap = await apiPriceResponse.json()
+    const priceData: TickerPriceMap = (await apiPriceResponse.json()) as TickerPriceMap
     console.log('Price data received:', JSON.stringify(priceData, null, 2))
 
     Object.entries(priceData).forEach(([ticker, data]) => {

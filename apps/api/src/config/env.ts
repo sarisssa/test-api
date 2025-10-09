@@ -12,6 +12,8 @@ export const envSchema: FastifyEnvOptions['schema'] = {
     'TWILIO_ACCOUNT_SID',
     'TWILIO_AUTH_TOKEN',
     'TWILIO_VERIFY_SERVICE_SID',
+    'WAGE_TABLE_NAME',
+    'REDIS_TLS_REJECT_UNAUTHORIZED',
   ],
   properties: {
     AWS_REGION: {
@@ -29,6 +31,7 @@ export const envSchema: FastifyEnvOptions['schema'] = {
     S3_BUCKET_NAME: {
       type: 'string',
       minLength: 1,
+      default: 'local-bucket',
     },
     JWT_SECRET: {
       type: 'string',
@@ -57,6 +60,14 @@ export const envSchema: FastifyEnvOptions['schema'] = {
     TWILIO_VERIFY_SERVICE_SID: {
       type: 'string',
       minLength: 1,
+    },
+    WAGE_TABLE_NAME: {
+      type: 'string',
+      minLength: 1,
+    },
+    REDIS_TLS_REJECT_UNAUTHORIZED: {
+      type: 'string',
+      default: 'false',
     },
     HOST: {
       type: 'string',
@@ -89,4 +100,6 @@ export type Env = {
   HOST: string;
   NODE_ENV: 'development' | 'production' | 'test';
   PORT: number;
+  WAGE_TABLE_NAME: string;
+  REDIS_TLS_REJECT_UNAUTHORIZED: string;
 };
