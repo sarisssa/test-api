@@ -10,7 +10,6 @@ export interface DynamoDBUserItem {
   emailAddress?: string;
   createdAt: string;
   lastLoggedIn?: string;
-  experiencePoints: number;
   stats: {
     totalMatches: number;
     wins: number;
@@ -34,19 +33,16 @@ export interface UserPublicProfile {
   phoneNumber: string;
   username?: string;
   emailAddress?: string;
-  experiencePoints: number;
   stats: {
     totalMatches: number;
     wins: number;
     losses: number;
     experience: number;
     inGameCurrency: number;
-    capital: number;
   };
-  profile?: {
-    profilePictureUrl?: string;
-    bio?: string;
-  };
+  profilePictureUrl?: string;
+  bio?: string;
+
   perks?: {
     [perkId: string]: {
       purchasedAt: string;

@@ -18,6 +18,10 @@ export interface UserMatch {
   players: Record<string, unknown>;
 }
 
+// ------------------------------------
+// User/Profile Schemas
+// ------------------------------------
+
 export const updateUsernameJsonSchema = {
   type: 'object',
   properties: {
@@ -32,6 +36,72 @@ export const updateUsernameJsonSchema = {
   additionalProperties: false,
 } as const;
 
+export const updateUsernameResponseJsonSchema = {
+  description: 'Username updated successfully',
+  type: 'object',
+  properties: {
+    message: {
+      type: 'string',
+      example: 'Username updated successfully',
+    },
+    newUsername: {
+      type: 'string',
+      example: 'new_johndoe',
+    },
+  },
+  required: ['message', 'newUsername'],
+} as const;
+
+export const userProfileResponseSchema = {
+  type: 'object',
+  properties: {
+    userId: { type: 'string' },
+    phoneNumber: { type: 'string' },
+    username: { type: 'string' },
+    emailAddress: { type: 'string' },
+    bio: { type: 'string' },
+    stats: {
+      type: 'object',
+      properties: {
+        totalMatches: { type: 'number' },
+        wins: { type: 'number' },
+        losses: { type: 'number' },
+        experience: { type: 'number' },
+        inGameCurrency: { type: 'number' },
+      },
+    },
+    profilePictureUrl: { type: 'string', nullable: true },
+    perks: {
+      type: 'object',
+      additionalProperties: {
+        type: 'object',
+        properties: {
+          purchasedAt: { type: 'string' },
+          quantity: { type: 'number' },
+        },
+      },
+    },
+    createdAt: { type: 'string' },
+    lastLoggedIn: { type: 'string' },
+  },
+  required: ['userId', 'phoneNumber', 'stats'],
+} as const;
+
+export const profilePictureResponseSchema = {
+  type: 'object',
+  properties: {
+    message: { type: 'string' },
+    profilePictureUrl: { type: 'string' },
+    user: userProfileResponseSchema,
+  },
+  required: ['message', 'profilePictureUrl', 'user'],
+  additionalProperties: false,
+} as const;
+
+// ------------------------------------
+// Upload Schemas
+// ------------------------------------
+
 export const uploadRouteParamsJsonSchema = {
   type: 'object',
   properties: {
@@ -42,6 +112,22 @@ export const uploadRouteParamsJsonSchema = {
     },
   },
   required: ['userId'],
+  additionalProperties: false,
+} as const;
+
+// ------------------------------------
+// Friends & Requests Schemas
+// ------------------------------------
+
+export const getFriendRequestsQueryJsonSchema = {
+  type: 'object',
+  properties: {
+    type: {
+      type: 'string',
+      enum: ['incoming', 'outgoing'],
+      default: 'incoming',
+    },
+  },
   additionalProperties: false,
 } as const;
 
@@ -80,78 +166,17 @@ export const friendRequestResponseJsonSchema = {
   additionalProperties: false,
 } as const;
 
-export const getFriendRequestsQueryJsonSchema = {
+export const friendRequestsResponseJsonSchema = {
   type: 'object',
   properties: {
-    type: {
-      type: 'string',
-      enum: ['incoming', 'outgoing'],
-      default: 'incoming',
-    },
-  },
-  additionalProperties: false,
-} as const;
-
-export const matchesResponseJsonSchema = {
-  type: 'object',
-  properties: {
-    matches: {
+    requests: {
       type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          matchId: { type: 'string' },
-          startTime: { type: 'string', format: 'date-time' },
-          endTime: { type: 'string', format: 'date-time' },
-          status: { type: 'string' },
-          players: { type: 'object' },
-        },
-        required: ['matchId', 'startTime', 'status', 'players'],
-      },
+      items: friendRequestResponseJsonSchema,
     },
     total: { type: 'number' },
   },
-  required: ['matches', 'total'],
+  required: ['requests', 'total'],
   additionalProperties: false,
-} as const;
-
-export const userProfileResponseSchema = {
-  type: 'object',
-  properties: {
-    userId: { type: 'string' },
-    phoneNumber: { type: 'string' },
-    experiencePoints: { type: 'number' },
-    stats: {
-      type: 'object',
-      properties: {
-        totalMatches: { type: 'number' },
-        wins: { type: 'number' },
-        losses: { type: 'number' },
-        experience: { type: 'number' },
-        inGameCurrency: { type: 'number' },
-        capital: { type: 'number' },
-      },
-    },
-    profile: {
-      type: 'object',
-      properties: {
-        profilePictureUrl: { type: 'string', nullable: true },
-        bio: { type: 'string', nullable: true },
-      },
-    },
-    perks: {
-      type: 'object',
-      additionalProperties: {
-        type: 'object',
-        properties: {
-          purchasedAt: { type: 'string' },
-          quantity: { type: 'number' },
-        },
-      },
-    },
-    createdAt: { type: 'string' },
-    lastLoggedIn: { type: 'string' },
-  },
 } as const;
 
 export const friendsResponseJsonSchema = {
@@ -173,19 +198,36 @@ export const friendsResponseJsonSchema = {
         required: ['userId', 'username'],
       },
     },
+    total: { type: 'number' },
   },
-  required: ['friends'],
+  required: ['friends', 'total'],
   additionalProperties: false,
 } as const;
 
-export const profilePictureResponseSchema = {
+// ------------------------------------
+// Matches & Invites Schemas
+// ------------------------------------
+
+export const matchesResponseJsonSchema = {
   type: 'object',
   properties: {
-    message: { type: 'string' },
-    profilePictureUrl: { type: 'string' },
-    user: userProfileResponseSchema,
+    matches: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          matchId: { type: 'string' },
+          startTime: { type: 'string', format: 'date-time' },
+          endTime: { type: 'string', format: 'date-time' },
+          status: { type: 'string' },
+          players: { type: 'object' },
+        },
+        required: ['matchId', 'startTime', 'status', 'players'],
+      },
+    },
+    total: { type: 'number' },
   },
-  required: ['message', 'profilePictureUrl', 'user'],
+  required: ['matches', 'total'],
   additionalProperties: false,
 } as const;
 

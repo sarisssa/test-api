@@ -4,16 +4,27 @@ import { DynamoDBPlayerMatchItem } from '../models/match.js';
 import { DynamoDBUserItem, UserPublicProfile } from '../models/user.js';
 
 const toPublicProfile = (user: DynamoDBUserItem): UserPublicProfile => {
+  if (!user) {
+    throw new Error('Cannot convert undefined user to public profile');
+  }
+
   return {
+    userId: user.userId,
     phoneNumber: user.phoneNumber,
     username: user.username,
     emailAddress: user.emailAddress,
-    experiencePoints: user.experiencePoints,
-    stats: user.stats,
-    profile: {
-      profilePictureUrl: user.profilePictureUrl,
-      bio: user.bio,
+    stats: {
+      totalMatches: user.stats.totalMatches,
+      wins: user.stats.wins,
+      losses: user.stats.losses,
+      experience: user.stats.experience,
+      inGameCurrency: user.stats.inGameCurrency,
     },
+    profilePictureUrl: user.profilePictureUrl,
+    bio: user.bio,
+    perks: user.perks,
+    createdAt: user.createdAt,
+    lastLoggedIn: user.lastLoggedIn,
   };
 };
 
@@ -61,7 +72,18 @@ export const getUserProfile = async (
   userId: string
 ): Promise<UserPublicProfile | undefined> => {
   try {
+    fastify.log.info({
+      userId,
+      msg: 'Service: Starting getUserProfile',
+    });
+
     const user = await fastify.repositories.user.getUserById(userId);
+
+    fastify.log.info({
+      userId,
+      userFound: !!user,
+      msg: 'Service: User lookup result',
+    });
 
     if (user) {
       const publicProfile = toPublicProfile(user);

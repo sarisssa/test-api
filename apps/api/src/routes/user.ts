@@ -11,13 +11,14 @@ import {
 import {
   GetFriendRequestsQuery,
   UpdateUsernameBody,
-  friendRequestResponseJsonSchema,
+  friendRequestsResponseJsonSchema,
   friendsResponseJsonSchema,
   getFriendRequestsQueryJsonSchema,
   invitesResponseSchema,
   matchesResponseJsonSchema,
   profilePictureResponseSchema,
   updateUsernameJsonSchema,
+  updateUsernameResponseJsonSchema,
   userProfileResponseSchema,
 } from '../types/user.js';
 
@@ -28,6 +29,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
     '/',
     {
       schema: {
+        security: [{ bearerAuth: [] }],
         tags: ['user'],
         description: 'Get user profile',
         response: {
@@ -88,25 +90,12 @@ export default async function userRoutes(fastify: FastifyInstance) {
     '/username',
     {
       schema: {
+        security: [{ bearerAuth: [] }],
         tags: ['user'],
         description: 'Update user username',
         body: updateUsernameJsonSchema,
         response: {
-          200: {
-            description: 'Username updated successfully',
-            type: 'object',
-            properties: {
-              message: {
-                type: 'string',
-                example: 'Username updated successfully',
-              },
-              newUsername: {
-                type: 'string',
-                example: 'new_johndoe',
-              },
-            },
-            required: ['message', 'newUsername'],
-          },
+          200: updateUsernameResponseJsonSchema,
           404: {
             description: 'User not found',
             $ref: 'ErrorResponse#',
@@ -172,6 +161,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
     '/profile-picture',
     {
       schema: {
+        security: [{ bearerAuth: [] }],
         tags: ['user'],
         description: 'Upload user profile picture',
         consumes: ['multipart/form-data'],
@@ -276,6 +266,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
     '/matches',
     {
       schema: {
+        security: [{ bearerAuth: [] }],
         tags: ['user'],
         description: 'Get user match history',
         response: {
@@ -323,6 +314,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
     '/invites',
     {
       schema: {
+        security: [{ bearerAuth: [] }],
         tags: ['user', 'invites'],
         description: 'Get user invites',
         response: {
@@ -387,6 +379,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
     '/friends',
     {
       schema: {
+        security: [{ bearerAuth: [] }],
         tags: ['user', 'friends'],
         description: 'Get user friends list',
         response: {
@@ -401,7 +394,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       try {
         const friends = await getUserFriends(fastify, request.user.userId);
-        return reply.send({ friends });
+        return reply.send({ friends, total: friends.length });
       } catch (error) {
         fastify.log.error({
           error,
@@ -421,15 +414,12 @@ export default async function userRoutes(fastify: FastifyInstance) {
     '/requests',
     {
       schema: {
+        security: [{ bearerAuth: [] }],
         tags: ['user', 'friends'],
         description: 'Get user friend requests',
         querystring: getFriendRequestsQueryJsonSchema,
         response: {
-          200: {
-            description: 'List of friend requests',
-            type: 'array',
-            items: friendRequestResponseJsonSchema,
-          },
+          200: friendRequestsResponseJsonSchema,
           500: {
             description: 'Internal server error',
             $ref: 'ErrorResponse#',
@@ -447,7 +437,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
           request.user.userId,
           type
         );
-        return reply.send(requests);
+        return reply.send({ requests, total: requests.length });
       } catch (error) {
         fastify.log.error({
           error,
