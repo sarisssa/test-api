@@ -24,6 +24,7 @@ import userRoutes from './routes/user.js';
 import { startMatchmakingWorker } from './services/matchmaking-worker.js';
 import { initMatchmaking } from './services/matchmaking.js';
 import { initializePhoneHashSalt } from './utils/phone-utils.js';
+import { buildFastifyRedisOptions } from './utils/redis.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -43,6 +44,13 @@ async function buildApp(): Promise<FastifyInstance> {
 
   initializePhoneHashSalt(fastify.config.PHONE_HASH_SALT);
 
+  if (
+    fastify.config.DYNAMODB_TABLE_NAME &&
+    (!fastify.config.WAGE_TABLE_NAME || fastify.config.WAGE_TABLE_NAME === 'WageTable')
+  ) {
+    fastify.config.WAGE_TABLE_NAME = fastify.config.DYNAMODB_TABLE_NAME;
+  }
+
   await fastify.register(cors);
   await fastify.register(jwt, {
     secret: fastify.config.JWT_SECRET,
@@ -50,10 +58,13 @@ async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(auth);
   await fastify.register(authPlugin);
 
-  await fastify.register(redis, {
-    url: fastify.config.REDIS_URL,
-    closeClient: true,
-  });
+  await fastify.register(
+    redis,
+    buildFastifyRedisOptions(fastify.config.REDIS_URL, fastify.config.REDIS_TLS_REJECT_UNAUTHORIZED, {
+      closeClient: true,
+      connectTimeout: 30_000,
+    })
+  );
 
   await fastify.register(dynamodbPlugin);
   await fastify.register(s3Plugin);

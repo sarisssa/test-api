@@ -3,6 +3,7 @@ import { Redis } from 'ioredis';
 import { WebSocket } from 'ws';
 import { WEBSOCKET_OUTGOING_CHANNEL } from '../constants.js';
 import { MatchResult } from '../types/matchmaking.js';
+import { createRedisClient } from '../utils/redis.js';
 
 // Local map to store active WebSocket connections for this specific Fargate task
 const activeConnections = new Map<string, WebSocket>();
@@ -51,8 +52,14 @@ export const startWebSocketMessageSubscriber = async (
   isSubscriberRunning = true;
   fastify.log.info('Starting WebSocket message subscriber...');
 
-  subRedis = new Redis(fastify.config.REDIS_URL);
-  pubRedis = new Redis(fastify.config.REDIS_URL);
+  subRedis = createRedisClient(
+    fastify.config.REDIS_URL,
+    fastify.config.REDIS_TLS_REJECT_UNAUTHORIZED
+  );
+  pubRedis = createRedisClient(
+    fastify.config.REDIS_URL,
+    fastify.config.REDIS_TLS_REJECT_UNAUTHORIZED
+  );
 
   subRedis.on('message', async (channel: string, message: string) => {
     if (channel === WEBSOCKET_OUTGOING_CHANNEL) {
