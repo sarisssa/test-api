@@ -34,3 +34,46 @@ export const verifyOtpJsonSchema = {
   required: ['code', 'phoneNumber'],
   additionalProperties: false,
 } as const;
+
+export const sendOtpResponseJsonSchema = {
+  description: 'OTP sent successfully',
+  type: 'object',
+  properties: {
+    message: { type: 'string' },
+  },
+} as const;
+
+export const verifyOtpResponseJsonSchema = {
+  description: 'OTP verified successfully',
+  type: 'object',
+  properties: {
+    message: { type: 'string' },
+    accessToken: { type: 'string' },
+    refreshToken: { type: 'string' },
+    user: {
+      type: 'object',
+      properties: {
+        userId: { type: 'string' },
+        phoneNumber: { type: 'string' },
+        username: { type: 'string', nullable: true },
+        stats: {
+          type: 'object',
+          properties: {
+            totalMatches: { type: 'number' },
+            wins: { type: 'number' },
+            losses: { type: 'number' },
+            experience: { type: 'number' },
+            inGameCurrency: { type: 'number' },
+          },
+        },
+        profile: {
+          type: 'object',
+          properties: {
+            profilePictureUrl: { type: 'string', nullable: true },
+            bio: { type: 'string', nullable: true },
+          },
+        },
+      },
+    },
+  },
+} as const;

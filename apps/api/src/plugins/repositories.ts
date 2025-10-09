@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 import { createAssetRepository } from '../repositories/asset-repository.js';
+import { createAuthRepository } from '../repositories/auth-repository.js';
 import { createFriendRepository } from '../repositories/friend-repository.js';
 import { createInviteRepository } from '../repositories/invite-repository.js';
 import { createMatchRepository } from '../repositories/match-repository.js';
@@ -18,6 +19,7 @@ declare module 'fastify' {
       perk: ReturnType<typeof createPerkRepository>;
       invite: ReturnType<typeof createInviteRepository>;
       friend: ReturnType<typeof createFriendRepository>;
+      auth: ReturnType<typeof createAuthRepository>;
     };
   }
 }
@@ -31,6 +33,7 @@ export default fp(async (fastify: FastifyInstance) => {
     perk: createPerkRepository(fastify),
     invite: createInviteRepository(fastify),
     friend: createFriendRepository(fastify),
+    auth: createAuthRepository(fastify),
   };
 
   fastify.decorate('repositories', repositories);

@@ -1,14 +1,6 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 
-declare module '@fastify/jwt' {
-  interface FastifyJWT {
-    user: {
-      userId: string;
-    };
-  }
-}
-
 async function authPlugin(fastify: FastifyInstance) {
   fastify.addHook('onRoute', routeOptions => {
     if (
@@ -21,8 +13,23 @@ async function authPlugin(fastify: FastifyInstance) {
     const preHandler = async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         await request.jwtVerify();
+
+        if (request.user.type !== 'access_token') {
+          fastify.log.warn({
+            userId: request.user.userId,
+            tokenType: request.user.type,
+            msg: 'Invalid token type for API access',
+          });
+          return reply.status(401).send({
+            error: 'Unauthorized',
+            message: 'Invalid token type',
+          });
+        }
       } catch (err) {
-        void err;
+        fastify.log.error({
+          error: err,
+          msg: 'JWT verification failed in auth plugin',
+        });
         reply.status(401).send({ error: 'Unauthorized' });
       }
     };

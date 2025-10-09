@@ -56,7 +56,6 @@ export const createUserRepository = (fastify: FastifyInstance) => {
       phoneNumber: normalizedPhone,
       createdAt: new Date().toISOString(),
       lastLoggedIn: new Date().toISOString(),
-      experiencePoints: 0,
       stats: {
         totalMatches: 0,
         wins: 0,
@@ -148,9 +147,10 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     try {
       const scanParams = {
         TableName: fastify.config.DYNAMODB_TABLE_NAME,
-        FilterExpression: 'userId = :userId',
+        FilterExpression: 'userId = :userId AND sk = :sk',
         ExpressionAttributeValues: {
           ':userId': userId,
+          ':sk': 'PROFILE',
         },
       };
 

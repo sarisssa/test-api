@@ -3,6 +3,7 @@ declare module 'fastify' {
     tags?: string[];
     description?: string;
     consumes?: string[];
+    security?: Array<{ [key: string]: string[] }>;
   }
 }
 
@@ -10,9 +11,13 @@ declare module '@fastify/jwt' {
   interface FastifyJWT {
     payload: {
       userId: string;
+      phoneNumber: string;
+      type: 'access_token' | 'refresh_token';
     };
     user: {
       userId: string;
+      phoneNumber: string;
+      type: 'access_token' | 'refresh_token';
     };
   }
 }
@@ -28,9 +33,13 @@ declare module 'fastify' {
   interface FastifyRequest {
     jwtVerify(): Promise<{
       userId: string;
+      phoneNumber: string;
+      type: 'access_token' | 'refresh_token';
     }>;
     user: {
       userId: string;
+      phoneNumber: string;
+      type: 'access_token' | 'refresh_token';
     };
   }
 }

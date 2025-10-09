@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyRequest } from 'fastify';
 import { formatPhoneNumber } from '../utils/phone-utils.js';
 import { createUser, findUserByPhone, updateUserLastLogin } from './user.js';
 
@@ -38,7 +38,8 @@ export const sendOtp = async (
 export const verifyOtp = async (
   fastify: FastifyInstance,
   phoneNumber: string,
-  code: string
+  code: string,
+  request?: FastifyRequest
 ) => {
   phoneNumber = formatPhoneNumber(phoneNumber);
 
@@ -85,14 +86,40 @@ export const verifyOtp = async (
       });
     }
 
-    const token = fastify.jwt.sign({
-      userId: user.userId,
-      phoneNumber: user.phoneNumber,
-    });
+    const accessToken = fastify.jwt.sign(
+      {
+        userId: user.userId,
+        phoneNumber: user.phoneNumber,
+        type: 'access_token',
+      },
+      { expiresIn: '10d' }
+    );
+
+    const refreshToken = fastify.jwt.sign(
+      {
+        userId: user.userId,
+        phoneNumber: user.phoneNumber,
+        type: 'refresh_token',
+      },
+      { expiresIn: '30d' }
+    );
+
+    await fastify.repositories.auth.storeRefreshToken(
+      user.userId,
+      refreshToken,
+      30,
+      request
+        ? {
+            userAgent: request.headers['user-agent'],
+            ipAddress: request.ip,
+          }
+        : undefined
+    );
 
     return {
       isNewUser,
-      token,
+      accessToken,
+      refreshToken,
       user: {
         userId: user.userId,
         phoneNumber: user.phoneNumber,
