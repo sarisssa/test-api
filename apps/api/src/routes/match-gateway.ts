@@ -1,16 +1,8 @@
 import { SocketStream } from '@fastify/websocket';
 import { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
-import {
-  addConnection,
-  removeConnection,
-} from '../services/connection-manager.js';
-import {
-  handleAssetDeselection,
-  handleAssetSelection,
-  handleReadyCheck,
-} from '../services/match.js';
-import { joinMatchmakingWithSession } from '../services/matchmaking.js';
+import { addConnection, removeConnection } from '../services/connection-manager.js';
+import { parseAndHandle } from '../ws/actions.js';
 
 //TODO: Extract user id from JWT, do not pass user id into the payload!
 //TODO: Eventually move to AWS API Gateway - do not leverage local Fastify websocket
@@ -21,7 +13,7 @@ export default async function matchGatewayRoutes(fastify: FastifyInstance) {
       {
         websocket: true,
       } as const,
-      (connection: SocketStream) => {
+      async (connection: SocketStream, req) => {
         const connectionId = uuidv4();
 
         (connection.socket as any).id = connectionId; // Use 'as any' or proper type augmentation
@@ -29,10 +21,23 @@ export default async function matchGatewayRoutes(fastify: FastifyInstance) {
         // Register the connection in the local Fastify instance
         addConnection(connectionId, connection.socket as any);
 
-        fastify.log.info(
-          { connectionId: connectionId },
-          `Client connected to matchmaking`
-        );
+        // Handshake auth: accept JWT via query (?token=) or Authorization header
+        let userId: string | null = null
+        try {
+          const url = new URL(req.url, 'http://localhost')
+          const token = (url.searchParams.get('token') || req.headers['authorization']?.toString().replace(/^[Bb]earer\s+/, '') || '').trim()
+          if (!token) throw new Error('missing_token')
+          const decoded = fastify.jwt.verify(token) as { userId?: string }
+          if (!decoded?.userId) throw new Error('missing_user')
+          userId = decoded.userId
+        } catch (err) {
+          fastify.log.warn({ err, connectionId }, 'WebSocket auth failed')
+          connection.socket.send(JSON.stringify({ type: 'error', message: 'unauthorized' }))
+          connection.socket.close()
+          return
+        }
+
+        fastify.log.info({ connectionId, userId }, 'Client connected to matchmaking')
 
         connection.socket.on('message', async message => {
           fastify.log.info({
@@ -42,160 +47,12 @@ export default async function matchGatewayRoutes(fastify: FastifyInstance) {
 
           try {
             const data = JSON.parse(message.toString());
-            fastify.log.info({
-              parsedData: data,
-              msg: 'Parsed message data',
-            });
-
-            switch (data.action) {
-              case 'join_matchmaking': {
-                fastify.log.info({
-                  connectionId,
-                  userId: data.userId,
-                  msg: 'Processing join_matchmaking request',
-                });
-
-                try {
-                  const playerAddedToQueue = await joinMatchmakingWithSession(
-                    fastify,
-                    data.userId,
-                    connectionId
-                  );
-                  fastify.log.info({
-                    playerAddedToQueue,
-                    userId: data.userId,
-                    connectionId,
-                    msg: 'Join matchmaking result',
-                  });
-                  connection.socket.send(
-                    JSON.stringify({
-                      type: 'joined_queue',
-                      playerAddedToQueue,
-                      message: playerAddedToQueue
-                        ? `user ${data.userId} joined matchmaking queue.`
-                        : 'Failed to join queue',
-                    })
-                  );
-                } catch (redisError) {
-                  fastify.log.error({
-                    redisError:
-                      redisError instanceof Error
-                        ? redisError.message
-                        : redisError,
-                    userId: data.userId,
-                    msg: 'Redis operation failed',
-                  });
-                  throw redisError;
-                }
-                break;
-              }
-
-              case 'select_asset': {
-                const { matchId, ticker, userId } = data.payload;
-
-                //This is intentional in case of reconnection
-                await fastify.redis.hset(
-                  `player:${userId}`,
-                  'connectionId',
-                  connectionId
-                );
-
-                try {
-                  await handleAssetSelection(fastify, userId, {
-                    matchId,
-                    ticker,
-                  });
-
-                  connection.socket.send(
-                    JSON.stringify({
-                      type: 'asset_selection_success',
-                      matchId,
-                      ticker,
-                    })
-                  );
-                } catch (error) {
-                  fastify.log.error({
-                    error,
-                    userId: data.userId,
-                    matchId,
-                    ticker,
-                    msg: 'Error handling asset selection',
-                  });
-                  throw error;
-                }
-                break;
-              }
-
-              case 'deselect_asset': {
-                const { matchId, ticker, userId } = data.payload;
-
-                try {
-                  await handleAssetDeselection(fastify, userId, {
-                    matchId,
-                    ticker,
-                  });
-
-                  connection.socket.send(
-                    JSON.stringify({
-                      type: 'asset_deselection_success',
-                      matchId,
-                      ticker,
-                    })
-                  );
-                } catch (error) {
-                  fastify.log.error({
-                    error,
-                    userId: data.userId,
-                    matchId,
-                    ticker,
-                    msg: 'Error handling asset selection',
-                  });
-                  throw error;
-                }
-                break;
-              }
-
-              case 'ready_check': {
-                const { matchId, userId } = data.payload;
-                await handleReadyCheck(fastify, userId, { matchId });
-                break;
-              }
-
-              case 'cancel_matchmaking': {
-                fastify.log.info(
-                  { connectionId: connectionId },
-                  'Processing ping request'
-                );
-                connection.socket.send(
-                  JSON.stringify({
-                    type: 'pong',
-                    message: 'Server is alive',
-                  })
-                );
-                break;
-              }
-
-              case 'ping': {
-                fastify.log.info(
-                  { connectionId: connectionId },
-                  'Processing ping request'
-                );
-                connection.socket.send(
-                  JSON.stringify({
-                    type: 'pong',
-                    message: 'Server is alive',
-                  })
-                );
-                break;
-              }
-
-              default:
-                connection.socket.send(
-                  JSON.stringify({
-                    type: 'error',
-                    message: 'Unknown action',
-                  })
-                );
+            const result = await parseAndHandle(
+              { fastify, connectionId, userId },
+              data
+            )
+            if (result) {
+              connection.socket.send(JSON.stringify(result))
             }
           } catch (error) {
             if (error instanceof Error) {
@@ -243,7 +100,7 @@ export default async function matchGatewayRoutes(fastify: FastifyInstance) {
           removeConnection(currentConnectionId);
 
           fastify.log.info(
-            { connectionId: currentConnectionId },
+            { connectionId: currentConnectionId, userId },
             `Client disconnected from matchmaking`
           );
           // TODO: Clean up player data from Redis when implementing disconnect handling
