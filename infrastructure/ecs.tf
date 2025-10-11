@@ -161,6 +161,17 @@ resource "aws_cloudwatch_log_group" "backend_log_group" {
   }
 }
 
+# Log group for match processor ECS tasks
+resource "aws_cloudwatch_log_group" "match_processor_log_group" {
+  name              = "/ecs/${var.project_name}-match-processor-${var.environment}"
+  retention_in_days = 60
+
+  tags = {
+    Name    = "${var.project_name}-match-processor-log-group-${var.environment}"
+    Service = "ECS"
+  }
+}
+
 # --- Network Security ---
 resource "aws_security_group" "backend_fargate_sg" {
   vpc_id      = aws_vpc.main_vpc.id
@@ -219,6 +230,25 @@ resource "aws_security_group" "backend_alb_sg" {
 
   tags = {
     Name = "${var.project_name}-backend-alb-sg-${var.environment}"
+  }
+}
+
+# Outbound-only SG for match processor workers
+resource "aws_security_group" "match_processor_fargate_sg" {
+  vpc_id      = aws_vpc.main_vpc.id
+  name        = "${var.project_name}-match-processor-fargate-sg-${var.environment}"
+  description = "Security group for match processor Fargate tasks (egress only)"
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Allow all outbound traffic"
+  }
+
+  tags = {
+    Name = "${var.project_name}-match-processor-fargate-sg-${var.environment}"
   }
 }
 
@@ -452,4 +482,88 @@ resource "aws_ecs_service" "backend_service" {
     aws_lb_listener.backend_https_listener,
     aws_iam_role_policy_attachment.ecs_task_execution_policy_attach
   ]
+}
+
+# Task definition for match processor worker (no ALB)
+resource "aws_ecs_task_definition" "match_processor_task" {
+  family                   = "${var.project_name}-match-processor-task-family-${var.environment}"
+  cpu                      = var.match_processor_task_cpu
+  memory                   = var.match_processor_task_memory
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+  task_role_arn            = aws_iam_role.ecs_task_role.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "${var.project_name}-match-processor"
+      image     = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${aws_ecr_repository.match_processor_repo.name}:latest"
+      cpu       = var.match_processor_task_cpu
+      memory    = var.match_processor_task_memory
+      essential = true
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.match_processor_log_group.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "ecs"
+        }
+      }
+      environment = [
+        {
+          name  = "NODE_ENV"
+          value = "production"
+        },
+        {
+          name  = "AWS_REGION"
+          value = var.aws_region
+        },
+        {
+          name  = "DYNAMODB_REGION"
+          value = var.aws_region
+        },
+        {
+          name  = "WAGE_TABLE_NAME"
+          value = aws_dynamodb_table.main.name
+        },
+        {
+          name  = "MATCH_PROCESSOR_INTERVAL_SECONDS"
+          value = tostring(var.match_processor_interval_seconds)
+        }
+      ]
+    }
+  ])
+
+  tags = {
+    Name = "${var.project_name}-match-processor-task-${var.environment}"
+  }
+}
+
+resource "aws_ecs_service" "match_processor_service" {
+  name                    = "${var.project_name}-match-processor-service-${var.environment}"
+  cluster                 = aws_ecs_cluster.backend_cluster.id
+  task_definition         = aws_ecs_task_definition.match_processor_task.arn
+  desired_count           = var.match_processor_service_desired_count
+  launch_type             = "FARGATE"
+  enable_execute_command  = true
+
+  lifecycle {
+    ignore_changes = [desired_count]
+  }
+
+  network_configuration {
+    subnets          = [aws_subnet.private_us_east_1a.id, aws_subnet.private_us_east_1c.id]
+    security_groups  = [aws_security_group.match_processor_fargate_sg.id]
+    assign_public_ip = false
+  }
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  tags = {
+    Name    = "${var.project_name}-match-processor-service-${var.environment}"
+    Service = "ECS"
+  }
 }

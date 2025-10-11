@@ -58,6 +58,31 @@ variable "ecs_service_desired_count" {
   type        = number
 }
 
+# Match Processor (ECS) configuration
+variable "match_processor_task_cpu" {
+  description = "CPU units allocated to the match processor ECS task."
+  type        = number
+  default     = 256
+}
+
+variable "match_processor_task_memory" {
+  description = "Memory (MiB) allocated to the match processor ECS task."
+  type        = number
+  default     = 512
+}
+
+variable "match_processor_service_desired_count" {
+  description = "Desired number of match processor tasks to run."
+  type        = number
+  default     = 1
+}
+
+variable "match_processor_interval_seconds" {
+  description = "Interval in seconds between match processor iterations."
+  type        = number
+  default     = 30
+}
+
 # ---------------------------------------------------
 # Monitoring & Alerting Configuration
 # ---------------------------------------------------
