@@ -17,9 +17,27 @@ export const getActiveMatches = async (): Promise<Match[]> => {
     }
   }
 
-  const { Items: matches = [] } = await ddb.scan(scanParams)
-  console.log(`DynamoDB scan complete. Found ${matches.length} active matches.`)
-  return matches as Match[]
+  try {
+    const { Items: matches = [] } = await ddb.scan(scanParams)
+    console.log(`DynamoDB scan complete. Found ${matches.length} active matches.`)
+    return matches as Match[]
+  } catch (error: unknown) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'name' in error &&
+      (error as { name: string }).name === 'ResourceNotFoundException'
+    ) {
+      console.warn(
+        `DynamoDB table "${WAGE_TABLE_NAME}" not found. Returning no matches. ` +
+          'Run the local table creation script before starting the match processor.'
+      )
+      return []
+    }
+
+    console.error('Failed to scan for active matches:', error)
+    throw error
+  }
 }
 
 export const updateAssetPrice = async (

@@ -1,11 +1,45 @@
 import { TickerPriceMap } from '../types.js'
 
 const TWELVE_DATA_API_KEY = process.env.TWELVE_DATA_API_KEY
+const USE_PRICE_SERVICE_STUB =
+  (process.env.USE_PRICE_SERVICE_STUB ?? 'false').toLowerCase() === 'true'
+
+const shouldUseStub = () => {
+  if (USE_PRICE_SERVICE_STUB) {
+    return true
+  }
+  if (!TWELVE_DATA_API_KEY || TWELVE_DATA_API_KEY === 'dummy') {
+    return true
+  }
+  return false
+}
+
+const buildStubPrice = (symbol: string): string => {
+  const hash = symbol
+    .toUpperCase()
+    .split('')
+    .reduce((sum, char) => sum + char.charCodeAt(0), 0)
+
+  const dollars = 20 + (hash % 200)
+  const cents = hash % 100
+
+  return `${dollars}.${cents.toString().padStart(2, '0')}`
+}
 
 export const fetchCurrentPrices = async (tickers: string[]): Promise<TickerPriceMap> => {
   if (tickers.length === 0) {
     console.log('No tickers found, skipping price fetch.')
     return {}
+  }
+
+  if (shouldUseStub()) {
+    console.log('Returning stubbed price data (local testing mode).')
+    return tickers.reduce<TickerPriceMap>((acc, ticker) => {
+      const price = buildStubPrice(ticker)
+      acc[ticker] = { price }
+      console.log(`${ticker}: $${price} (stub)`)
+      return acc
+    }, {})
   }
 
   const symbolsString = tickers.join(',')
