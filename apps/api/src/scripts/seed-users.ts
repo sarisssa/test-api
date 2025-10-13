@@ -120,7 +120,6 @@ function transformUserToDynamoDB(userData: TestUserData): DynamoDBUserItem {
     hashedPhoneNumber,
     phoneNumber: userData.phoneNumber,
     username: userData.username,
-    experiencePoints: userData.experiencePoints,
     createdAt: now,
     lastLoggedIn: now,
     stats: {
@@ -185,7 +184,7 @@ async function seedUsers() {
     userItems.forEach(user => {
       console.log(`- ${user.username} (${user.userId})`);
       console.log(`  Phone: ${user.phoneNumber}`);
-      console.log(`  XP: ${user.experiencePoints}`);
+      console.log(`  XP: ${user.stats.experience}`);
       console.log(`  Stats: ${user.stats.wins}W/${user.stats.losses}L`);
       console.log('  ----------------');
     });

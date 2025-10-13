@@ -6,20 +6,14 @@ import {
 import { config } from 'dotenv';
 import fs from 'fs/promises';
 import path from 'path';
-import { DynamoDBAssetItem } from '../models/asset.js';
 
 config();
 
-const TABLE_NAME = 'WageTable';
+const TABLE_NAME = 'wage-main-dev';
 const DATA_DIR = 'data';
 
 const client = new DynamoDBClient({
   region: 'us-east-1',
-  endpoint: 'http://localhost:4566', // LocalStack - change for production
-  credentials: {
-    accessKeyId: 'test',
-    secretAccessKey: 'test',
-  },
 });
 
 const dynamodb = DynamoDBDocumentClient.from(client);
@@ -65,10 +59,10 @@ interface CommoditiesFile {
   data: CommodityData[];
 }
 
-function transformStockToDynamoDB(stock: StockData): DynamoDBAssetItem {
+function transformStockToDynamoDB(stock: StockData): any {
   return {
-    PK: `ASSET#${stock.symbol}`,
-    SK: `METADATA#${stock.symbol}`,
+    pk: `ASSET#${stock.symbol}`,
+    sk: `METADATA`,
     EntityType: 'Asset',
     AssetType: 'STOCK',
     Symbol: stock.symbol,
@@ -94,10 +88,10 @@ function transformStockToDynamoDB(stock: StockData): DynamoDBAssetItem {
   };
 }
 
-function transformCryptoToDynamoDB(crypto: CryptoData): DynamoDBAssetItem {
+function transformCryptoToDynamoDB(crypto: CryptoData): any {
   return {
-    PK: `ASSET#${crypto.symbol}`,
-    SK: `METADATA#${crypto.symbol}`,
+    pk: `ASSET#${crypto.symbol}`,
+    sk: `METADATA`,
     EntityType: 'Asset',
     AssetType: 'CRYPTO',
     Symbol: crypto.symbol,
@@ -108,12 +102,10 @@ function transformCryptoToDynamoDB(crypto: CryptoData): DynamoDBAssetItem {
   };
 }
 
-function transformCommodityToDynamoDB(
-  commodity: CommodityData
-): DynamoDBAssetItem {
+function transformCommodityToDynamoDB(commodity: CommodityData): any {
   return {
-    PK: `ASSET#${commodity.symbol}`,
-    SK: `METADATA#${commodity.symbol}`,
+    pk: `ASSET#${commodity.symbol}`,
+    sk: `METADATA`,
     EntityType: 'Asset',
     AssetType: 'COMMODITY',
     Symbol: commodity.symbol,
@@ -124,7 +116,7 @@ function transformCommodityToDynamoDB(
   };
 }
 
-async function batchWrite(items: DynamoDBAssetItem[]) {
+async function batchWrite(items: any[]) {
   const BATCH_SIZE = 25; // DynamoDB batch write limit
   const batches = [];
 
@@ -165,7 +157,7 @@ async function batchWrite(items: DynamoDBAssetItem[]) {
 async function seedAllAssets() {
   console.log('🚀 Starting comprehensive asset seeding...');
 
-  const allAssets: DynamoDBAssetItem[] = [];
+  const allAssets: any[] = [];
 
   try {
     console.log('📈 Processing stock data...');
