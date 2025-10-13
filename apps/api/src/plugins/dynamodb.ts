@@ -14,6 +14,13 @@ declare module 'fastify' {
 async function dynamodbPlugin(fastify: FastifyInstance) {
   const dynamodbClient = new DynamoDBClient({
     region: fastify.config.AWS_REGION,
+    ...(fastify.config.DYNAMODB_URL && {
+      endpoint: fastify.config.DYNAMODB_URL,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? 'test',
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? 'test',
+      },
+    }),
   });
 
   const dynamodb = DynamoDBDocumentClient.from(dynamodbClient);

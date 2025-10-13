@@ -49,5 +49,9 @@ export const createRedisClient = (
     }
   }
 
-  return new Redis.Redis(url, options)
+  const RedisCtor = Redis as unknown as {
+    new (url: string, options?: RedisOptions): Redis.Redis
+  }
+
+  return new RedisCtor(url, options)
 }
