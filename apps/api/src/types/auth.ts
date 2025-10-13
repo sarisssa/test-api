@@ -7,6 +7,10 @@ export interface VerifyOtpBody {
   phoneNumber: string;
 }
 
+export interface RefreshTokenBody {
+  refreshToken: string;
+}
+
 export const sendOtpJsonSchema = {
   type: 'object',
   properties: {
@@ -73,6 +77,36 @@ export const verifyOtpResponseJsonSchema = {
             bio: { type: 'string', nullable: true },
           },
         },
+      },
+    },
+  },
+} as const;
+
+export const refreshTokenJsonSchema = {
+  type: 'object',
+  properties: {
+    refreshToken: {
+      type: 'string',
+      minLength: 1,
+    },
+  },
+  required: ['refreshToken'],
+  additionalProperties: false,
+} as const;
+
+export const refreshTokenResponseJsonSchema = {
+  description: 'Tokens refreshed successfully',
+  type: 'object',
+  properties: {
+    message: { type: 'string' },
+    accessToken: { type: 'string' },
+    refreshToken: { type: 'string' },
+    user: {
+      type: 'object',
+      properties: {
+        userId: { type: 'string' },
+        phoneNumber: { type: 'string' },
+        username: { type: 'string', nullable: true },
       },
     },
   },

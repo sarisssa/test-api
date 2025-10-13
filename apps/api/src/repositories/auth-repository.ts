@@ -85,7 +85,7 @@ export const createAuthRepository = (fastify: FastifyInstance) => {
       const result = await dynamodb.send(
         new QueryCommand({
           TableName: fastify.config.DYNAMODB_TABLE_NAME,
-          IndexName: 'gsi1',
+          IndexName: 'gsi1-index',
           KeyConditionExpression: 'gsi1_pk = :tokenHash AND gsi1_sk = :userId',
           ExpressionAttributeValues: {
             ':tokenHash': `TOKEN#${tokenHash}`,
@@ -183,9 +183,55 @@ export const createAuthRepository = (fastify: FastifyInstance) => {
     }
   };
 
+  const revokeRefreshTokenByHash = async (
+    userId: string,
+    token: string,
+    reason: 'user_logout' | 'security' | 'replaced' | 'expired' = 'replaced'
+  ): Promise<void> => {
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+
+    try {
+      const result = await dynamodb.send(
+        new QueryCommand({
+          TableName: fastify.config.DYNAMODB_TABLE_NAME,
+          IndexName: 'gsi1-index',
+          KeyConditionExpression: 'gsi1_pk = :tokenHash AND gsi1_sk = :userId',
+          ExpressionAttributeValues: {
+            ':tokenHash': `TOKEN#${tokenHash}`,
+            ':userId': `USER#${userId}`,
+          },
+        })
+      );
+
+      if (!result.Items || result.Items.length === 0) {
+        logger.warn({ userId, msg: 'Token not found for revocation' });
+        return;
+      }
+
+      const tokenItem = result.Items[0] as DynamoDBRefreshTokenItem;
+
+      await revokeRefreshToken(userId, tokenItem.tokenId, reason);
+
+      logger.info({
+        userId,
+        tokenId: tokenItem.tokenId,
+        reason,
+        msg: 'Refresh token revoked by hash',
+      });
+    } catch (error) {
+      logger.error({
+        error,
+        userId,
+        msg: 'Error revoking refresh token by hash',
+      });
+      throw error;
+    }
+  };
+
   return {
     storeRefreshToken,
     validateRefreshToken,
     revokeRefreshToken,
+    revokeRefreshTokenByHash,
   };
 };

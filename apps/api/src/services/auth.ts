@@ -144,3 +144,93 @@ export const verifyOtp = async (
     throw new Error('An error occurred during verification. Please try again.');
   }
 };
+
+export const refreshAuthTokens = async (
+  fastify: FastifyInstance,
+  refreshToken: string,
+  request?: FastifyRequest
+) => {
+  try {
+    const decoded = fastify.jwt.verify<{
+      userId: string;
+      phoneNumber: string;
+      type: string;
+    }>(refreshToken);
+
+    if (decoded.type !== 'refresh_token') {
+      throw new Error('Invalid token type');
+    }
+
+    const isRefreshTokenValid =
+      await fastify.repositories.auth.validateRefreshToken(
+        decoded.userId,
+        refreshToken
+      );
+
+    if (!isRefreshTokenValid) {
+      throw new Error('Invalid or expired refresh token');
+    }
+
+    const user = await findUserByPhone(fastify, decoded.phoneNumber);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    const newAccessToken = fastify.jwt.sign(
+      {
+        userId: user.userId,
+        phoneNumber: user.phoneNumber,
+        type: 'access_token',
+      },
+      { expiresIn: '10d' }
+    );
+
+    const newRefreshToken = fastify.jwt.sign(
+      {
+        userId: user.userId,
+        phoneNumber: user.phoneNumber,
+        type: 'refresh_token',
+      },
+      { expiresIn: '30d' }
+    );
+
+    await fastify.repositories.auth.storeRefreshToken(
+      user.userId,
+      newRefreshToken,
+      30,
+      request
+        ? {
+            userAgent: request.headers['user-agent'],
+            ipAddress: request.ip,
+          }
+        : undefined
+    );
+
+    await fastify.repositories.auth.revokeRefreshTokenByHash(
+      user.userId,
+      refreshToken,
+      'replaced'
+    );
+
+    fastify.log.info({
+      userId: user.userId,
+      msg: 'Tokens refreshed successfully with rotation',
+    });
+
+    return {
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+      user: {
+        userId: user.userId,
+        phoneNumber: user.phoneNumber,
+        username: user.username,
+      },
+    };
+  } catch (error) {
+    fastify.log.error({
+      error,
+      msg: 'Failed to refresh access token',
+    });
+    throw error;
+  }
+};

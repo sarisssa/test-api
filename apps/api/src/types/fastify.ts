@@ -30,6 +30,12 @@ declare module '@fastify/multipart' {
 }
 
 declare module 'fastify' {
+  interface FastifyInstance {
+    jwt: {
+      sign(payload: object, options?: { expiresIn?: string }): string;
+      verify<T = unknown>(token: string): T;
+    };
+  }
   interface FastifyRequest {
     jwtVerify(): Promise<{
       userId: string;
