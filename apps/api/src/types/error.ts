@@ -1,3 +1,4 @@
+//TODO: Make multiple blocks of this for each error code
 export const ErrorResponseSchema = {
   $id: 'ErrorResponse',
   type: 'object',
@@ -15,7 +16,7 @@ export const ErrorResponseSchema = {
     message: {
       type: 'string',
       description: 'A user-friendly error message.',
-      example: 'User not found',
+      example: 'Entity not found',
     },
   },
   required: ['statusCode', 'error', 'message'],

@@ -7,6 +7,7 @@ export interface DynamoDBPerkItem {
   class: 'Default' | 'Basic' | 'Mid' | 'Elite';
   minimumPlayerTier: number;
   description?: string;
+  imageUrl?: string;
   createdAt: string;
   updatedAt: string;
 }

@@ -43,6 +43,7 @@ export default async function perkRoutes(fastify: FastifyInstance) {
             class: perk.class,
             minimumPlayerTier: perk.minimumPlayerTier,
             description: perk.description,
+            imageUrl: perk.imageUrl,
           })),
           count: sortedPerks.length,
         };
@@ -71,7 +72,15 @@ export default async function perkRoutes(fastify: FastifyInstance) {
         response: {
           200: buyPerkResponseJsonSchema,
           400: {
-            description: 'Invalid request',
+            description: 'Invalid request (perk not found, etc.)',
+            $ref: 'ErrorResponse#',
+          },
+          402: {
+            description: 'Insufficient chips',
+            $ref: 'ErrorResponse#',
+          },
+          403: {
+            description: 'Player tier requirement not met',
             $ref: 'ErrorResponse#',
           },
           500: {
@@ -92,13 +101,32 @@ export default async function perkRoutes(fastify: FastifyInstance) {
             message: result.message,
             newBalance: result.newBalance,
           });
-        } else {
-          return reply.status(400).send({
-            statusCode: 400,
-            error: 'Bad Request',
+        }
+
+        // Handle different error cases with appropriate status codes
+        if (result.reason === 'INSUFFICIENT_FUNDS') {
+          return reply.status(402).send({
+            statusCode: 402,
+            error: 'Payment Required',
             message: result.message,
+            reason: result.reason,
           });
         }
+
+        if (result.reason === 'TIER_REQUIREMENT') {
+          return reply.status(403).send({
+            statusCode: 403,
+            error: 'Forbidden',
+            message: result.message,
+            reason: result.reason,
+          });
+        }
+
+        return reply.status(400).send({
+          statusCode: 400,
+          error: 'Bad Request',
+          message: result.message,
+        });
       } catch (error) {
         fastify.log.error({
           error,

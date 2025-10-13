@@ -42,6 +42,7 @@ export const getUserPerks = async (
       if (perk) {
         userPerks.push({
           id: perkId,
+          imageUrl: perk.imageUrl,
           quantity: perkData.quantity,
         });
       }

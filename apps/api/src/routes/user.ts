@@ -291,7 +291,9 @@ export default async function userRoutes(fastify: FastifyInstance) {
 
         return {
           perks: userPerks,
-          count: userPerks.length,
+          stats: {
+            total: userPerks.length,
+          },
         };
       } catch (error) {
         fastify.log.error({
@@ -334,7 +336,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
 
         return reply.send({
           matches,
-          total: matches.length,
+          stats: { total: matches.length },
         });
       } catch (error) {
         fastify.log.error({ error, msg: 'Error getting user matches' });
@@ -493,7 +495,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       try {
         const friends = await getUserFriends(fastify, request.user.userId);
-        return reply.send({ friends, total: friends.length });
+        return reply.send({ friends, stats: { total: friends.length } });
       } catch (error) {
         fastify.log.error({
           error,

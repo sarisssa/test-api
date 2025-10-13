@@ -202,9 +202,14 @@ export const friendsResponseJsonSchema = {
         required: ['userId', 'username'],
       },
     },
-    total: { type: 'number' },
+    stats: {
+      type: 'object',
+      properties: {
+        total: { type: 'number' },
+      },
+    },
   },
-  required: ['friends', 'total'],
+  required: ['friends', 'stats'],
   additionalProperties: false,
 } as const;
 
@@ -229,9 +234,14 @@ export const matchesResponseJsonSchema = {
         required: ['matchId', 'startTime', 'status', 'players'],
       },
     },
-    total: { type: 'number' },
+    stats: {
+      type: 'object',
+      properties: {
+        total: { type: 'number' },
+      },
+    },
   },
-  required: ['matches', 'total'],
+  required: ['matches', 'stats'],
   additionalProperties: false,
 } as const;
 

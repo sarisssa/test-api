@@ -20,6 +20,7 @@ export const perksResponseJsonSchema = {
           },
           minimumPlayerTier: { type: 'number' },
           description: { type: 'string' },
+          imageUrl: { type: 'string' },
         },
       },
     },
@@ -37,11 +38,17 @@ export const userPerksResponseJsonSchema = {
         type: 'object',
         properties: {
           id: { type: 'string' },
+          imageUrl: { type: 'string' },
           quantity: { type: 'number' },
         },
       },
     },
-    count: { type: 'number' },
+    stats: {
+      type: 'object',
+      properties: {
+        total: { type: 'number' },
+      },
+    },
   },
 } as const;
 

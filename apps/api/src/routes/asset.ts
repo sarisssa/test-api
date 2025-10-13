@@ -21,7 +21,19 @@ export default async function assetRoutes(fastify: FastifyInstance) {
     '/',
     {
       schema: {
+        tags: ['assets'],
+        description: 'Search for assets',
         querystring: assetSearchQueryJsonSchema,
+        response: {
+          200: {
+            description: 'List of assets matching search criteria',
+            type: 'array',
+          },
+          500: {
+            description: 'Internal server error',
+            $ref: 'ErrorResponse#',
+          },
+        },
       },
     },
     async (request, reply) => {
@@ -54,7 +66,33 @@ export default async function assetRoutes(fastify: FastifyInstance) {
     '/:symbol/price',
     {
       schema: {
+        tags: ['assets'],
+        description: 'Get current price for an asset',
         params: getAssetParamsJsonSchema,
+        response: {
+          200: {
+            description: 'Current price information',
+            type: 'object',
+            properties: {
+              symbol: { type: 'string' },
+              price: { type: 'number' },
+              lastUpdated: { type: 'string' },
+              source: { type: 'string', enum: ['database', 'live'] },
+            },
+          },
+          404: {
+            description: 'Price data not available',
+            $ref: 'ErrorResponse#',
+          },
+          502: {
+            description: 'Failed to fetch price data',
+            $ref: 'ErrorResponse#',
+          },
+          500: {
+            description: 'Internal server error',
+            $ref: 'ErrorResponse#',
+          },
+        },
       },
     },
     async (request, reply) => {
@@ -197,8 +235,24 @@ export default async function assetRoutes(fastify: FastifyInstance) {
     '/:symbol',
     {
       schema: {
+        tags: ['assets'],
+        description: 'Get detailed information about an asset',
         params: getAssetParamsJsonSchema,
         querystring: getAssetQueryJsonSchema,
+        response: {
+          200: {
+            description: 'Asset information',
+            type: 'object',
+          },
+          404: {
+            description: 'Asset not found',
+            $ref: 'ErrorResponse#',
+          },
+          500: {
+            description: 'Internal server error',
+            $ref: 'ErrorResponse#',
+          },
+        },
       },
     },
     async (request, reply) => {
