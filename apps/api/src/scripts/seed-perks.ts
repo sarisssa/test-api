@@ -1,4 +1,5 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import type { DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
 import {
   BatchWriteCommand,
   DynamoDBDocumentClient,
@@ -8,11 +9,30 @@ import { DynamoDBPerkItem } from '../models/perk.js';
 
 config();
 
-const TABLE_NAME = 'wage-main-dev';
+const TABLE_NAME =
+  process.env.WAGE_TABLE_NAME ??
+  process.env.DYNAMODB_TABLE_NAME ??
+  'WageTable';
 
-const client = new DynamoDBClient({
-  region: 'us-east-1',
-});
+const region = process.env.AWS_REGION ?? 'us-east-1';
+const endpoint =
+  process.env.DYNAMODB_URL ??
+  process.env.DYNAMODB_ENDPOINT ??
+  process.env.LOCALSTACK_ENDPOINT;
+
+const clientConfig: DynamoDBClientConfig = {
+  region,
+};
+
+if (endpoint) {
+  clientConfig.endpoint = endpoint;
+  clientConfig.credentials = {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? 'test',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? 'test',
+  };
+}
+
+const client = new DynamoDBClient(clientConfig);
 
 const dynamodb = DynamoDBDocumentClient.from(client);
 
@@ -114,10 +134,15 @@ const perkData: PerkSeedData[] = [
   },
 ];
 
-function transformPerkToDynamoDB(perk: PerkSeedData): DynamoDBPerkItem {
+type SeedPerkItem = DynamoDBPerkItem & {
+  PK: DynamoDBPerkItem['pk'];
+  SK: DynamoDBPerkItem['sk'];
+};
+
+function transformPerkToDynamoDB(perk: PerkSeedData): SeedPerkItem {
   const now = new Date().toISOString();
 
-  return {
+  const baseItem: DynamoDBPerkItem = {
     pk: `PERK#${perk.perkName.toUpperCase()}`,
     sk: 'METADATA',
     EntityType: 'Perk',
@@ -129,9 +154,15 @@ function transformPerkToDynamoDB(perk: PerkSeedData): DynamoDBPerkItem {
     createdAt: now,
     updatedAt: now,
   };
+
+  return {
+    ...baseItem,
+    PK: baseItem.pk,
+    SK: baseItem.sk,
+  };
 }
 
-async function batchWrite(items: DynamoDBPerkItem[]) {
+async function batchWrite(items: SeedPerkItem[]) {
   const BATCH_SIZE = 25;
   const batches = [];
 

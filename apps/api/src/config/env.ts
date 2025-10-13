@@ -33,6 +33,9 @@ export const envSchema: FastifyEnvOptions['schema'] = {
       minLength: 1,
       default: 'local-bucket',
     },
+    S3_ENDPOINT: {
+      type: 'string',
+    },
     JWT_SECRET: {
       type: 'string',
       minLength: 1,
@@ -69,6 +72,10 @@ export const envSchema: FastifyEnvOptions['schema'] = {
       type: 'string',
       default: 'false',
     },
+    USE_TWILIO_STUB: {
+      type: 'string',
+      default: 'false',
+    },
     HOST: {
       type: 'string',
       default: '0.0.0.0',
@@ -90,6 +97,7 @@ export type Env = {
   DYNAMODB_TABLE_NAME: string;
   DYNAMODB_URL?: string;
   S3_BUCKET_NAME: string;
+  S3_ENDPOINT?: string;
   JWT_SECRET: string;
   PHONE_HASH_SALT: string;
   REDIS_URL: string;
@@ -102,4 +110,5 @@ export type Env = {
   PORT: number;
   WAGE_TABLE_NAME: string;
   REDIS_TLS_REJECT_UNAUTHORIZED: string;
+  USE_TWILIO_STUB?: string;
 };

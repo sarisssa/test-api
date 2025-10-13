@@ -35,7 +35,11 @@
     "dev": "tsx watch src/main.ts",
     "lint": "eslint src/**/*.ts",
     "clean": "rm -rf dist",
-    "seed-db": "node --loader ts-node/esm src/scripts/seed-db.ts"
+    "seed-db": "node --loader ts-node/esm src/scripts/seed-db.ts",
+    "seed-users": "tsx src/scripts/seed-users.ts",
+    "seed-perks": "tsx src/scripts/seed-perks.ts",
+    "create-in-progress-match": "tsx src/scripts/create-in-progress-match.ts",
+    "create-partial-ready-match": "tsx src/scripts/create-partial-ready-match.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.29.0",
