@@ -37,16 +37,9 @@ export const acceptInviteBodyJsonSchema = {
 export const createInviteResponseJsonSchema = {
   type: 'object',
   properties: {
-    success: { type: 'boolean' },
-    inviteCode: {
-      type: 'string',
-      minLength: 8,
-      maxLength: 8,
-      pattern: '^[A-Z0-9]+$',
-    },
     inviteUrl: { type: 'string' },
     createdAt: { type: 'string', format: 'date-time' },
   },
-  required: ['success', 'inviteCode', 'inviteUrl', 'createdAt'],
+  required: ['inviteUrl', 'createdAt'],
   additionalProperties: false,
 } as const;

@@ -1,6 +1,6 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getUserFriends, getUserRequests } from '../services/friend.js';
-import { getUserInvites } from '../services/invite.js';
+import { generateInviteLink, getUserInvites } from '../services/invite.js';
 
 import { getUserPerks } from '../services/perk.js';
 import {
@@ -9,6 +9,7 @@ import {
   updateUsername,
   uploadProfilePicture,
 } from '../services/user.js';
+import { createInviteResponseJsonSchema } from '../types/invite.js';
 import { userPerksResponseJsonSchema } from '../types/perk.js';
 import {
   GetFriendRequestsQuery,
@@ -356,7 +357,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
     {
       schema: {
         security: [{ bearerAuth: [] }],
-        tags: ['user', 'invites'],
+        tags: ['user'],
         description: 'Get user invites',
         response: {
           200: invitesResponseSchema,
@@ -376,7 +377,6 @@ export default async function userRoutes(fastify: FastifyInstance) {
         const invites = await getUserInvites(fastify, request.user.userId);
 
         const invitesWithStats = invites.map(invite => ({
-          inviteCode: invite.inviteCode,
           status: invite.status,
           createdAt: invite.createdAt,
           inviteUrl: `https://wage.app/invite/${invite.inviteCode}`,
@@ -416,12 +416,66 @@ export default async function userRoutes(fastify: FastifyInstance) {
     }
   );
 
+  fastify.post(
+    '/invites',
+    {
+      schema: {
+        security: [{ bearerAuth: [] }],
+        tags: ['user'],
+        description: 'Generate a new invite link',
+        response: {
+          201: createInviteResponseJsonSchema,
+          404: {
+            description: 'Sender not found',
+            type: 'object',
+            properties: {
+              error: { type: 'string' },
+            },
+          },
+          500: {
+            description: 'Internal server error',
+            type: 'object',
+            properties: {
+              error: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const result = await generateInviteLink(fastify, request.user.userId);
+
+        return reply.status(201).send({
+          inviteUrl: result.inviteUrl,
+          createdAt: result.invite.createdAt,
+        });
+      } catch (error) {
+        fastify.log.error({
+          error,
+          senderId: request.user.userId,
+          msg: 'Error in POST /invites endpoint',
+        });
+
+        if (error instanceof Error && error.message === 'Sender not found') {
+          return reply.status(404).send({
+            error: 'Sender not found',
+          });
+        }
+
+        return reply.status(500).send({
+          error: 'Failed to generate invite link',
+        });
+      }
+    }
+  );
+
   fastify.get(
     '/friends',
     {
       schema: {
         security: [{ bearerAuth: [] }],
-        tags: ['user', 'friends'],
+        tags: ['user'],
         description: 'Get user friends list',
         response: {
           200: friendsResponseJsonSchema,

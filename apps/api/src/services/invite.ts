@@ -6,7 +6,6 @@ export const generateInviteLink = async (
   fastify: FastifyInstance,
   senderId: string
 ): Promise<{
-  inviteCode: string;
   inviteUrl: string;
   invite: DynamoDBInviteItem;
 }> => {
@@ -37,15 +36,7 @@ export const generateInviteLink = async (
     const baseUrl = 'https://wage.app';
     const inviteUrl = `${baseUrl}/invite/${inviteCode}`;
 
-    fastify.log.info({
-      senderId,
-      inviteCode,
-      inviteUrl,
-      msg: 'Invite link generated successfully',
-    });
-
     return {
-      inviteCode,
       inviteUrl,
       invite,
     };
@@ -135,13 +126,11 @@ export const processInviteAcceptance = async (
       return { success: false, message: 'Invite already used' };
     }
 
-    // Verify receiver exists
     const receiver = await fastify.repositories.user.getUserById(receiverId);
     if (!receiver) {
       return { success: false, message: 'Receiver not found' };
     }
 
-    // Update invite status
     await fastify.repositories.invite.updateInviteStatus(
       invite.senderId,
       inviteCode,

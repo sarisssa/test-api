@@ -239,12 +239,11 @@ export const invitesResponseSchema = {
       items: {
         type: 'object',
         properties: {
-          inviteCode: { type: 'string' },
           status: { type: 'string' },
           createdAt: { type: 'string' },
           inviteUrl: { type: 'string' },
         },
-        required: ['inviteCode', 'status', 'createdAt', 'inviteUrl'],
+        required: ['status', 'createdAt', 'inviteUrl'],
       },
     },
     stats: {
