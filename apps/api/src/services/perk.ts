@@ -21,28 +21,27 @@ export const getUserPerks = async (
   userId: string
 ): Promise<
   {
-    perkId: string;
-    perk: DynamoDBPerkItem;
-    purchasedAt: string;
+    id: string;
     quantity: number;
   }[]
 > => {
   try {
     const user = await fastify.repositories.user.getUserById(userId);
 
-    if (!user || !user.perks) {
-      return [];
+    if (!user) {
+      throw new Error(`User not found: ${userId}`);
     }
 
+    if (!user.perks) {
+      throw new Error(`User perks not found: ${userId}`);
+    }
     const userPerks = [];
 
     for (const [perkId, perkData] of Object.entries(user.perks)) {
       const perk = await fastify.repositories.perk.getPerkById(perkId);
       if (perk) {
         userPerks.push({
-          perkId,
-          perk,
-          purchasedAt: perkData.purchasedAt,
+          id: perkId,
           quantity: perkData.quantity,
         });
       }
@@ -64,7 +63,6 @@ export const buyPerk = async (
   userId: string,
   perkId: string
 ): Promise<{
-  success: boolean;
   message: string;
   newBalance?: number;
   reason?: 'TIER_REQUIREMENT' | 'INSUFFICIENT_FUNDS';
@@ -79,7 +77,7 @@ export const buyPerk = async (
         userId,
         msg: 'User not found during perk purchase',
       });
-      return { success: false, message: 'User not found' };
+      return { message: 'User not found' };
     }
 
     if (!perk) {
@@ -87,25 +85,24 @@ export const buyPerk = async (
         perkId,
         msg: 'Perk not found during purchase',
       });
-      return { success: false, message: 'Perk not found' };
+      return { message: 'Perk not found' };
     }
 
     const currentBalance = user.stats.inGameCurrency;
 
-    const playerTier = calculatePlayerTier(user.experiencePoints);
-    if (playerTier.tier < perk.requiredPlayerTier) {
-      const requiredTierName = getTierName(perk.requiredPlayerTier);
+    const playerTier = calculatePlayerTier(user.stats.experience);
+    if (playerTier.tier < perk.minimumPlayerTier) {
+      const requiredTierName = getTierName(perk.minimumPlayerTier);
       fastify.log.warn({
         userId,
         perkId,
         currentTier: playerTier.name,
         requiredTier: requiredTierName,
-        currentXP: user.experiencePoints,
+        currentXP: user.stats.experience,
         msg: 'Insufficient player tier for perk purchase',
       });
       return {
-        success: false,
-        message: `This perk requires ${requiredTierName} tier (${perk.requiredPlayerTier}). Current tier: ${playerTier.name}`,
+        message: `This perk requires ${requiredTierName} tier (${perk.minimumPlayerTier}). Current tier: ${playerTier.name}`,
         reason: 'TIER_REQUIREMENT',
       };
     }
@@ -119,7 +116,6 @@ export const buyPerk = async (
         msg: 'Insufficient funds for perk purchase',
       });
       return {
-        success: false,
         message: `Insufficient chips. Need ${perk.chipsCost}, have ${currentBalance}`,
         reason: 'INSUFFICIENT_FUNDS',
       };
@@ -148,15 +144,14 @@ export const buyPerk = async (
     fastify.log.info({
       userId,
       perkId,
-      perkName: perk.perkName,
+      perkName: perk.name,
       cost: perk.chipsCost,
       newBalance,
       msg: 'Perk purchased successfully',
     });
 
     return {
-      success: true,
-      message: `Successfully purchased ${perk.perkName}`,
+      message: `Successfully purchased ${perk.name}`,
       newBalance,
     };
   } catch (error) {

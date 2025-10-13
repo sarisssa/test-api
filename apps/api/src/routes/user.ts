@@ -2,12 +2,14 @@ import { FastifyInstance } from 'fastify';
 import { getUserFriends, getUserRequests } from '../services/friend.js';
 import { getUserInvites } from '../services/invite.js';
 
+import { getUserPerks } from '../services/perk.js';
 import {
   getUserMatchHistory,
   getUserProfile,
   updateUsername,
   uploadProfilePicture,
 } from '../services/user.js';
+import { userPerksResponseJsonSchema } from '../types/perk.js';
 import {
   GetFriendRequestsQuery,
   UpdateUsernameBody,
@@ -257,6 +259,45 @@ export default async function userRoutes(fastify: FastifyInstance) {
           message:
             'Internal server error: ' +
             (error instanceof Error ? error.message : 'Unknown error'),
+        });
+      }
+    }
+  );
+
+  fastify.get(
+    '/perks',
+    {
+      schema: {
+        security: [{ bearerAuth: [] }],
+        tags: ['user'],
+        description: "Get user's purchased perks",
+        response: {
+          200: userPerksResponseJsonSchema,
+          500: {
+            description: 'Internal server error',
+            $ref: 'ErrorResponse#',
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const userPerks = await getUserPerks(fastify, request.user.userId);
+
+        return {
+          perks: userPerks,
+          count: userPerks.length,
+        };
+      } catch (error) {
+        fastify.log.error({
+          error,
+          userId: request.user.userId,
+          msg: 'Error in GET /perks/my-perks endpoint',
+        });
+        return reply.status(500).send({
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Failed to fetch user perks',
         });
       }
     }

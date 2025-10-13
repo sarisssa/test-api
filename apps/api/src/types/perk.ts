@@ -11,11 +11,15 @@ export const perksResponseJsonSchema = {
       items: {
         type: 'object',
         properties: {
-          perkId: { type: 'string' },
-          perkName: { type: 'string' },
+          id: { type: 'string' },
+          name: { type: 'string' },
+          chipsCost: { type: 'number' },
+          class: {
+            type: 'string',
+            enum: ['Default', 'Basic', 'Mid', 'Elite'],
+          },
+          minimumPlayerTier: { type: 'number' },
           description: { type: 'string' },
-          cost: { type: 'number' },
-          requiredPlayerTier: { type: 'number' },
         },
       },
     },
@@ -32,15 +36,7 @@ export const userPerksResponseJsonSchema = {
       items: {
         type: 'object',
         properties: {
-          perkId: { type: 'string' },
-          perk: {
-            type: 'object',
-            properties: {
-              perkName: { type: 'string' },
-              description: { type: 'string' },
-            },
-          },
-          purchasedAt: { type: 'string' },
+          id: { type: 'string' },
           quantity: { type: 'number' },
         },
       },
@@ -62,7 +58,6 @@ export const buyPerkResponseJsonSchema = {
   description: 'Perk purchased successfully',
   type: 'object',
   properties: {
-    success: { type: 'boolean', enum: [true] },
     message: { type: 'string' },
     newBalance: { type: 'number' },
   },

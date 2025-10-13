@@ -1,11 +1,10 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { buyPerk, getAllPerks, getUserPerks } from '../services/perk.js';
+import { buyPerk, getAllPerks } from '../services/perk.js';
 import {
   BuyPerkBody,
   buyPerkJsonSchema,
   buyPerkResponseJsonSchema,
   perksResponseJsonSchema,
-  userPerksResponseJsonSchema,
 } from '../types/perk.js';
 
 export default async function perkRoutes(fastify: FastifyInstance) {
@@ -30,14 +29,21 @@ export default async function perkRoutes(fastify: FastifyInstance) {
         const perks = await getAllPerks(fastify);
 
         const sortedPerks = perks.sort((a, b) => {
-          if (a.requiredPlayerTier !== b.requiredPlayerTier) {
-            return a.requiredPlayerTier - b.requiredPlayerTier;
+          if (a.minimumPlayerTier !== b.minimumPlayerTier) {
+            return a.minimumPlayerTier - b.minimumPlayerTier;
           }
-          return a.perkName.localeCompare(b.perkName);
+          return a.name.localeCompare(b.name);
         });
 
         return {
-          perks: sortedPerks,
+          perks: sortedPerks.map(perk => ({
+            id: perk.pk.replace('PERK#', ''),
+            name: perk.name,
+            chipsCost: perk.chipsCost,
+            class: perk.class,
+            minimumPlayerTier: perk.minimumPlayerTier,
+            description: perk.description,
+          })),
           count: sortedPerks.length,
         };
       } catch (error) {
@@ -49,45 +55,6 @@ export default async function perkRoutes(fastify: FastifyInstance) {
           statusCode: 500,
           error: 'Internal Server Error',
           message: 'Failed to fetch perks',
-        });
-      }
-    }
-  );
-
-  fastify.get(
-    '/my-perks',
-    {
-      schema: {
-        security: [{ bearerAuth: [] }],
-        tags: ['perks'],
-        description: "Get user's purchased perks",
-        response: {
-          200: userPerksResponseJsonSchema,
-          500: {
-            description: 'Internal server error',
-            $ref: 'ErrorResponse#',
-          },
-        },
-      },
-    },
-    async (request, reply) => {
-      try {
-        const userPerks = await getUserPerks(fastify, request.user.userId);
-
-        return {
-          perks: userPerks,
-          count: userPerks.length,
-        };
-      } catch (error) {
-        fastify.log.error({
-          error,
-          userId: request.user.userId,
-          msg: 'Error in GET /perks/my-perks endpoint',
-        });
-        return reply.status(500).send({
-          statusCode: 500,
-          error: 'Internal Server Error',
-          message: 'Failed to fetch user perks',
         });
       }
     }
@@ -120,9 +87,8 @@ export default async function perkRoutes(fastify: FastifyInstance) {
       try {
         const result = await buyPerk(fastify, request.user.userId, perkId);
 
-        if (result.success) {
+        if (result.newBalance !== undefined) {
           return reply.status(200).send({
-            success: true,
             message: result.message,
             newBalance: result.newBalance,
           });

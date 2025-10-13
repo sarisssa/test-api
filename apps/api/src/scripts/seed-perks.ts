@@ -17,98 +17,98 @@ const client = new DynamoDBClient({
 const dynamodb = DynamoDBDocumentClient.from(client);
 
 interface PerkSeedData {
-  perkName: string;
+  name: string;
   chipsCost: number;
-  perkClass: 'Default' | 'Basic' | 'Mid' | 'Elite';
-  requiredPlayerTier: number;
+  class: 'Default' | 'Basic' | 'Mid' | 'Elite';
+  minimumPlayerTier: number;
   description?: string;
 }
 
 const perkData: PerkSeedData[] = [
   {
-    perkName: 'Guard',
+    name: 'Guard',
     chipsCost: 50,
-    perkClass: 'Basic',
-    requiredPlayerTier: 1,
+    class: 'Basic',
+    minimumPlayerTier: 1,
     description:
       'Raise your defenses before the market strikes. Guard is a preemptive shield, blocking the impact of a single enemy perk on one of your assets. ',
   },
   {
-    perkName: 'Ice',
+    name: 'Ice',
     chipsCost: 50,
-    perkClass: 'Basic',
-    requiredPlayerTier: 1,
+    class: 'Basic',
+    minimumPlayerTier: 1,
     description:
       'Cold, calm and calculated. Ice freezes the price of any asset — lock in the price while your opponent scrambles.',
   },
   {
-    perkName: 'Flame',
+    name: 'Flame',
     chipsCost: 50,
-    perkClass: 'Basic',
-    requiredPlayerTier: 1,
+    class: 'Basic',
+    minimumPlayerTier: 1,
     description:
       'Break the ice. Flame thaws a frozen asset, bringing it back to life and putting you on the offense again.',
   },
   {
-    perkName: 'Shadow',
+    name: 'Shadow',
     chipsCost: 25,
-    perkClass: 'Default',
-    requiredPlayerTier: 0,
+    class: 'Default',
+    minimumPlayerTier: 0,
     description:
       'Hide in plain sight. Shadow cloaks your next move, hiding your asset name and performance from your opponent.',
   },
   {
-    perkName: 'Spotlight',
+    name: 'Spotlight',
     chipsCost: 25,
-    perkClass: 'Default',
-    requiredPlayerTier: 0,
+    class: 'Default',
+    minimumPlayerTier: 0,
     description:
       'Reveal the truth. Spotlight brings a hidden asset into view. In this arena, no secret is hidden forever.',
   },
   {
-    perkName: 'Flip',
+    name: 'Flip',
     chipsCost: 100,
-    perkClass: 'Mid',
-    requiredPlayerTier: 2,
+    class: 'Mid',
+    minimumPlayerTier: 2,
     description:
       'Flip the script. Flip turns a gain into loss or vice versa by inverting your price. Use it to forge your own short position—or to twist an opponent’s fortune against them.',
   },
   {
-    perkName: 'Juiced',
+    name: 'Juiced',
     chipsCost: 50,
-    perkClass: 'Basic',
-    requiredPlayerTier: 1,
+    class: 'Basic',
+    minimumPlayerTier: 1,
     description:
       'Hit the Juice and fuel your asset growth by 2x -  just remember, every high brings a harder crash.',
   },
   {
-    perkName: 'Fortress',
+    name: 'Fortress',
     chipsCost: 100,
-    perkClass: 'Mid',
-    requiredPlayerTier: 2,
+    class: 'Mid',
+    minimumPlayerTier: 2,
     description:
       'Lock the game down. Fortress  prevents any new perks from affecting it. It provides protection for 20% of total match time.',
   },
   {
-    perkName: 'Wipe',
+    name: 'Wipe',
     chipsCost: 150,
-    perkClass: 'Elite',
-    requiredPlayerTier: 3,
+    class: 'Elite',
+    minimumPlayerTier: 3,
     description:
       'Level the playing field. Wipe clears every perk in play—yours included—resetting the field to nothing but pure market instinct.',
   },
   {
-    perkName: 'Assassin',
+    name: 'Assassin',
     chipsCost: 150,
-    perkClass: 'Elite',
-    requiredPlayerTier: 3,
+    class: 'Elite',
+    minimumPlayerTier: 3,
     description: `Strike fast and neutralize the target. Assassin eliminates one asset from your opponent’s portfolio without warning.`,
   },
   {
-    perkName: 'Thief',
+    name: 'Thief',
     chipsCost: 150,
-    perkClass: 'Elite',
-    requiredPlayerTier: 3,
+    class: 'Elite',
+    minimumPlayerTier: 3,
     description:
       'Victory isn’t always earned—it’s taken. Thief steals 1% of your opponent’s total and adds it to your own. ',
   },
@@ -118,13 +118,13 @@ function transformPerkToDynamoDB(perk: PerkSeedData): DynamoDBPerkItem {
   const now = new Date().toISOString();
 
   return {
-    pk: `PERK#${perk.perkName.toUpperCase()}`,
+    pk: `PERK#${perk.name.toUpperCase()}`,
     sk: 'METADATA',
     EntityType: 'Perk',
-    perkName: perk.perkName,
+    name: perk.name,
     chipsCost: perk.chipsCost,
-    perkClass: perk.perkClass,
-    requiredPlayerTier: perk.requiredPlayerTier,
+    class: perk.class,
+    minimumPlayerTier: perk.minimumPlayerTier,
     description: perk.description,
     createdAt: now,
     updatedAt: now,
