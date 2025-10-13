@@ -32,8 +32,6 @@ export default fp(async function (fastify: FastifyInstance) {
         { name: 'auth', description: 'Authentication endpoints' },
         { name: 'user', description: 'User endpoints' },
         { name: 'assets', description: 'Asset endpoints' },
-        { name: 'friends', description: 'Friend endpoints' },
-        { name: 'invites', description: 'Invite endpoints' },
         { name: 'perks', description: 'Perk endpoints' },
       ],
     },

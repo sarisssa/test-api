@@ -9,17 +9,21 @@ import {
   updateUsername,
   uploadProfilePicture,
 } from '../services/user.js';
+import {
+  CreateFriendRequestBody,
+  createFriendRequestJsonSchema,
+  UpdateFriendRequestParams,
+  updateFriendRequestParamsJsonSchema,
+} from '../types/friend.js';
 import { createInviteResponseJsonSchema } from '../types/invite.js';
 import { userPerksResponseJsonSchema } from '../types/perk.js';
 import {
-  GetFriendRequestsQuery,
-  UpdateUsernameBody,
   friendRequestsResponseJsonSchema,
   friendsResponseJsonSchema,
-  getFriendRequestsQueryJsonSchema,
   invitesResponseSchema,
   matchesResponseJsonSchema,
   profilePictureResponseSchema,
+  UpdateUsernameBody,
   updateUsernameJsonSchema,
   updateUsernameResponseJsonSchema,
   userProfileResponseSchema,
@@ -358,7 +362,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
       schema: {
         security: [{ bearerAuth: [] }],
         tags: ['user'],
-        description: 'Get user invites',
+        description: 'Get user referral invites',
         response: {
           200: invitesResponseSchema,
           404: {
@@ -505,14 +509,13 @@ export default async function userRoutes(fastify: FastifyInstance) {
     }
   );
 
-  fastify.get<{ Querystring: GetFriendRequestsQuery }>(
-    '/requests',
+  fastify.get(
+    '/friends/requests',
     {
       schema: {
         security: [{ bearerAuth: [] }],
-        tags: ['user', 'friends'],
-        description: 'Get user friend requests',
-        querystring: getFriendRequestsQueryJsonSchema,
+        tags: ['user'],
+        description: 'Get all user friend requests',
         response: {
           200: friendRequestsResponseJsonSchema,
           500: {
@@ -523,27 +526,257 @@ export default async function userRoutes(fastify: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      //Default to incoming requests
-      const { type = 'incoming' } = request.query;
-
       try {
-        const requests = await getUserRequests(
-          fastify,
-          request.user.userId,
-          type
-        );
-        return reply.send({ requests, total: requests.length });
+        const requests = await getUserRequests(fastify, request.user.userId);
+        return reply.send({
+          requests,
+          stats: {
+            total: requests.length,
+            incoming: requests.filter(r => r.direction === 'incoming').length,
+            outgoing: requests.filter(r => r.direction === 'outgoing').length,
+          },
+        });
       } catch (error) {
         fastify.log.error({
           error,
           userId: request.user.userId,
-          type,
-          msg: 'Error in GET /user/requests endpoint',
+          msg: 'Error in GET /friends/requests endpoint',
         });
         return reply.status(500).send({
           statusCode: 500,
           error: 'Internal Server Error',
           message: 'Failed to fetch friend requests',
+        });
+      }
+    }
+  );
+
+  fastify.post<{ Body: CreateFriendRequestBody }>(
+    '/friends/requests',
+    {
+      schema: {
+        security: [{ bearerAuth: [] }],
+        tags: ['user'],
+        description: 'Send a friend request',
+        body: createFriendRequestJsonSchema,
+        response: {
+          201: {
+            description: 'Friend request sent successfully',
+            type: 'object',
+            properties: {
+              requestId: { type: 'string' },
+              message: { type: 'string' },
+            },
+          },
+          400: {
+            description: 'Invalid request',
+            type: 'object',
+            properties: {
+              error: { type: 'string' },
+            },
+          },
+          500: {
+            description: 'Internal server error',
+            type: 'object',
+            properties: {
+              error: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { receiverId } = request.body;
+
+      if (request.user.userId === receiverId) {
+        return reply.status(400).send({
+          error: 'Cannot send friend request to yourself',
+        });
+      }
+
+      try {
+        const friendRequest =
+          await fastify.repositories.friend.createFriendRequest(
+            request.user.userId,
+            receiverId
+          );
+
+        return reply.status(201).send({
+          requestId: friendRequest.requestId,
+          message: 'Friend request sent successfully',
+        });
+      } catch (error) {
+        fastify.log.error({
+          error,
+          senderId: request.user.userId,
+          receiverId,
+          msg: 'Error in POST /requests endpoint',
+        });
+        return reply.status(500).send({
+          error: 'Failed to send friend request',
+        });
+      }
+    }
+  );
+
+  fastify.patch<{ Params: UpdateFriendRequestParams }>(
+    '/friends/requests/:requestId',
+    {
+      schema: {
+        security: [{ bearerAuth: [] }],
+        tags: ['user'],
+        description: 'Accept or reject a friend request',
+        params: updateFriendRequestParamsJsonSchema,
+        body: {
+          type: 'object',
+          properties: {
+            status: {
+              type: 'string',
+              enum: ['accepted', 'rejected'],
+            },
+          },
+          required: ['status'],
+          additionalProperties: false,
+        },
+        response: {
+          200: {
+            description: 'Friend request processed successfully',
+            type: 'object',
+            properties: {
+              message: { type: 'string' },
+            },
+          },
+          403: {
+            description: 'Not authorized to respond to this request',
+            type: 'object',
+            properties: {
+              error: { type: 'string' },
+            },
+          },
+          404: {
+            description: 'Friend request not found',
+            type: 'object',
+            properties: {
+              error: { type: 'string' },
+            },
+          },
+          500: {
+            description: 'Internal server error',
+            type: 'object',
+            properties: {
+              error: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { requestId } = request.params;
+      const { status } = request.body as { status: 'accepted' | 'rejected' };
+
+      try {
+        const friendRequest =
+          await fastify.repositories.friend.getFriendRequest(requestId);
+
+        if (!friendRequest) {
+          return reply.status(404).send({
+            error: 'Friend request not found',
+          });
+        }
+
+        if (friendRequest.receiverId !== request.user.userId) {
+          return reply.status(403).send({
+            error: 'Not authorized to respond to this request',
+          });
+        }
+
+        if (status === 'accepted') {
+          await fastify.repositories.friend.createFriendship(
+            friendRequest.senderId,
+            friendRequest.receiverId
+          );
+        }
+
+        await fastify.repositories.friend.deleteFriendRequest(requestId);
+
+        return reply.status(200).send({
+          message:
+            status === 'accepted'
+              ? 'Friend request accepted'
+              : 'Friend request rejected',
+        });
+      } catch (error) {
+        fastify.log.error({
+          error,
+          requestId,
+          userId: request.user.userId,
+          status,
+          msg: 'Error in PATCH /requests/:requestId endpoint',
+        });
+        return reply.status(500).send({
+          error: 'Failed to process friend request',
+        });
+      }
+    }
+  );
+
+  fastify.delete<{ Params: { friendId: string } }>(
+    '/friends/:friendId',
+    {
+      schema: {
+        security: [{ bearerAuth: [] }],
+        tags: ['user'],
+        description: 'Remove a friend',
+        params: {
+          type: 'object',
+          properties: {
+            friendId: {
+              type: 'string',
+              pattern:
+                '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+            },
+          },
+          required: ['friendId'],
+          additionalProperties: false,
+        },
+        response: {
+          200: {
+            description: 'Friend removed successfully',
+            type: 'object',
+            properties: {
+              message: { type: 'string' },
+            },
+          },
+          500: {
+            description: 'Internal server error',
+            type: 'object',
+            properties: {
+              error: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { friendId } = request.params;
+
+      try {
+        await fastify.repositories.friend.deleteFriendship(
+          request.user.userId,
+          friendId
+        );
+        return reply.status(200).send({
+          message: 'Friend removed successfully',
+        });
+      } catch (error) {
+        fastify.log.error({
+          error,
+          userId: request.user.userId,
+          friendId,
+          msg: 'Error in DELETE /friends/:friendId endpoint',
+        });
+        return reply.status(500).send({
+          error: 'Failed to remove friend',
         });
       }
     }

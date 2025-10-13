@@ -24,29 +24,14 @@ export const createFriendRepository = (fastify: FastifyInstance) => {
     receiverId: string
   ): Promise<boolean> => {
     try {
-      // Check both directions (A->B and B->A)
-      const [outgoingRequests, incomingRequests] = await Promise.all([
-        getUserRequests(senderId, 'outgoing'),
-        getUserRequests(senderId, 'incoming'),
-      ]);
+      const allRequests = await getUserRequests(senderId);
 
-      // Only check for PENDING requests
-      const hasOutgoing = outgoingRequests.some(
+      const hasOutgoing = allRequests.some(
         r => r.receiverId === receiverId && r.status === 'PENDING'
       );
-      const hasIncoming = incomingRequests.some(
+      const hasIncoming = allRequests.some(
         r => r.senderId === receiverId && r.status === 'PENDING'
       );
-
-      logger.info({
-        senderId,
-        receiverId,
-        hasOutgoing,
-        hasIncoming,
-        outgoingRequests,
-        incomingRequests,
-        msg: 'Checking for existing friend requests',
-      });
 
       return hasOutgoing || hasIncoming;
     } catch (error) {
@@ -59,7 +44,6 @@ export const createFriendRepository = (fastify: FastifyInstance) => {
       throw error;
     }
   };
-
   const createFriendRequest = async (
     senderId: string,
     receiverId: string
@@ -161,20 +145,6 @@ export const createFriendRepository = (fastify: FastifyInstance) => {
         })
       );
 
-      // Log all found items for debugging
-      logger.info({
-        requestId,
-        allItems: result.Items,
-        msg: 'All items found with this request ID',
-      });
-
-      logger.info({
-        requestId,
-        found: !!result.Items?.length,
-        item: result.Items?.[0],
-        msg: 'Friend request lookup result',
-      });
-
       return (result.Items?.[0] as DynamoDBFriendRequestItem) || null;
     } catch (error) {
       logger.error({
@@ -187,35 +157,57 @@ export const createFriendRepository = (fastify: FastifyInstance) => {
   };
 
   const getUserRequests = async (
-    userId: string,
-    direction: 'incoming' | 'outgoing'
+    userId: string
   ): Promise<DynamoDBFriendRequestItem[]> => {
     try {
-      const isOutgoing = direction === 'outgoing';
-      const result = await dynamodb.send(
-        new QueryCommand({
-          TableName: fastify.config.DYNAMODB_TABLE_NAME,
-          IndexName: 'gsi1-index',
-          KeyConditionExpression:
-            'gsi1_pk = :userKey AND begins_with(gsi1_sk, :prefix)',
-          ExpressionAttributeValues: {
-            ':userKey': isOutgoing ? `SENDER#${userId}` : `RECEIVER#${userId}`,
-            ':prefix': 'REQUEST#',
-            ':status': 'PENDING',
-          },
-          FilterExpression: '#status = :status',
-          ExpressionAttributeNames: {
-            '#status': 'status',
-          },
-        })
-      );
+      // Query both incoming and outgoing requests in parallel
+      const [outgoingResult, incomingResult] = await Promise.all([
+        dynamodb.send(
+          new QueryCommand({
+            TableName: fastify.config.DYNAMODB_TABLE_NAME,
+            IndexName: 'gsi1-index',
+            KeyConditionExpression:
+              'gsi1_pk = :userKey AND begins_with(gsi1_sk, :prefix)',
+            ExpressionAttributeValues: {
+              ':userKey': `SENDER#${userId}`,
+              ':prefix': 'REQUEST#',
+              ':status': 'PENDING',
+            },
+            FilterExpression: '#status = :status',
+            ExpressionAttributeNames: {
+              '#status': 'status',
+            },
+          })
+        ),
+        dynamodb.send(
+          new QueryCommand({
+            TableName: fastify.config.DYNAMODB_TABLE_NAME,
+            IndexName: 'gsi1-index',
+            KeyConditionExpression:
+              'gsi1_pk = :userKey AND begins_with(gsi1_sk, :prefix)',
+            ExpressionAttributeValues: {
+              ':userKey': `RECEIVER#${userId}`,
+              ':prefix': 'REQUEST#',
+              ':status': 'PENDING',
+            },
+            FilterExpression: '#status = :status',
+            ExpressionAttributeNames: {
+              '#status': 'status',
+            },
+          })
+        ),
+      ]);
 
-      return (result.Items || []) as DynamoDBFriendRequestItem[];
+      const outgoing = (outgoingResult.Items ||
+        []) as DynamoDBFriendRequestItem[];
+      const incoming = (incomingResult.Items ||
+        []) as DynamoDBFriendRequestItem[];
+
+      return [...outgoing, ...incoming];
     } catch (error) {
       logger.error({
         error,
         userId,
-        direction,
         msg: 'Error fetching user requests',
       });
       throw error;

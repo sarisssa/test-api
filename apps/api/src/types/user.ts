@@ -173,9 +173,13 @@ export const friendRequestsResponseJsonSchema = {
       type: 'array',
       items: friendRequestResponseJsonSchema,
     },
-    total: { type: 'number' },
+    stats: {
+      total: { type: 'number' },
+      incoming: { type: 'number' },
+      outgoing: { type: 'number' },
+    },
   },
-  required: ['requests', 'total'],
+  required: ['requests', 'stats'],
   additionalProperties: false,
 } as const;
 

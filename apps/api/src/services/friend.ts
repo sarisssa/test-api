@@ -17,7 +17,7 @@ export const getUserFriends = async (
         );
         if (!friend) return null;
 
-        const tier = calculatePlayerTier(friend.experiencePoints);
+        const tier = calculatePlayerTier(friend.stats.experience);
 
         return {
           userId: friend.userId,
@@ -25,7 +25,7 @@ export const getUserFriends = async (
           profilePictureUrl: friend.profilePictureUrl,
           stats: {
             tier: tier.name,
-            experience: friend.experiencePoints,
+            experience: friend.stats.experience,
             wins: friend.stats.wins,
             losses: friend.stats.losses,
           },
@@ -49,19 +49,17 @@ export const getUserFriends = async (
 
 export const getUserRequests = async (
   fastify: FastifyInstance,
-  userId: string,
-  direction: 'incoming' | 'outgoing'
+  userId: string
 ): Promise<FriendRequestResponse[]> => {
   try {
-    const requests = await fastify.repositories.friend.getUserRequests(
-      userId,
-      direction
-    );
+    const requests = await fastify.repositories.friend.getUserRequests(userId);
 
     const enrichedRequests = await Promise.all(
       requests.map(async request => {
-        const otherUserId =
-          direction === 'incoming' ? request.senderId : request.receiverId;
+        // Determine direction based on whether user is sender or receiver
+        const isIncoming = request.receiverId === userId;
+        const otherUserId = isIncoming ? request.senderId : request.receiverId;
+
         const otherUser =
           await fastify.repositories.user.getUserById(otherUserId);
         if (!otherUser) return null;
@@ -72,7 +70,7 @@ export const getUserRequests = async (
           username: otherUser.username || undefined,
           profilePictureUrl: otherUser.profilePictureUrl || undefined,
           requestedAt: request.requestedAt,
-          direction,
+          direction: isIncoming ? ('incoming' as const) : ('outgoing' as const),
         };
       })
     );
@@ -84,7 +82,6 @@ export const getUserRequests = async (
     fastify.log.error({
       error,
       userId,
-      direction,
       msg: 'Error in getUserRequests service',
     });
     throw error;

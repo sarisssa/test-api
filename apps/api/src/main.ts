@@ -15,7 +15,6 @@ import swaggerPlugin from './plugins/swagger.js';
 import twilioPlugin from './plugins/twilio.js';
 import assetRoutes from './routes/asset.js';
 import authRoutes from './routes/auth.js';
-import friendRoutes from './routes/friends.js';
 import healthRoutes from './routes/health.js';
 import matchGatewayRoutes from './routes/match-gateway.js';
 import perkRoutes from './routes/perks.js';
@@ -78,7 +77,6 @@ async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(authRoutes, { prefix: '/auth' });
   await fastify.register(perkRoutes, { prefix: '/perks' });
   await fastify.register(userRoutes, { prefix: '/user' });
-  await fastify.register(friendRoutes, { prefix: '/friends' });
 
   return fastify;
 }
