@@ -5,6 +5,7 @@ import { createFriendRepository } from '../repositories/friend-repository.js';
 import { createInviteRepository } from '../repositories/invite-repository.js';
 import { createMatchRepository } from '../repositories/match-repository.js';
 import { createMatchmakingRepository } from '../repositories/matchmaking-repository.js';
+import { createRefreshTokenRepository } from '../repositories/refresh-token-repository.js';
 import { createPerkRepository } from '../repositories/perk-repository.js';
 import { createUserRepository } from '../repositories/user-repository.js';
 
@@ -18,6 +19,7 @@ declare module 'fastify' {
       perk: ReturnType<typeof createPerkRepository>;
       invite: ReturnType<typeof createInviteRepository>;
       friend: ReturnType<typeof createFriendRepository>;
+      refreshToken: ReturnType<typeof createRefreshTokenRepository>;
     };
   }
 }
@@ -31,6 +33,7 @@ export default fp(async (fastify: FastifyInstance) => {
     perk: createPerkRepository(fastify),
     invite: createInviteRepository(fastify),
     friend: createFriendRepository(fastify),
+    refreshToken: createRefreshTokenRepository(fastify),
   };
 
   fastify.decorate('repositories', repositories);

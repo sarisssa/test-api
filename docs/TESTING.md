@@ -90,6 +90,13 @@ Once the new events land, simulate forfeits:
 2. Trigger a surrender during `in_progress`.  
    Expect the same event with `phase: "in_progress"` plus `winnerId`.
 
+### E. Token Refresh Flow
+1. Complete OTP sign-in and capture the returned `refreshToken`.
+2. Call `POST /auth/token/refresh` with `{ "refreshToken": "<token>" }`.  
+   - Expect `200 OK` with fresh `accessToken`, `refreshToken`, `refreshTokenExpiresAt`.
+   - Ensure the original refresh token is rejected if re-used (should return `401`).
+3. Retry a protected API request using the new access token to confirm it authorises correctly.
+
 Record findings in release notes and file bugs for any mismatch.
 
 ---
