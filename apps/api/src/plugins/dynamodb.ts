@@ -1,4 +1,4 @@
-import { DynamoDBClient, ListTablesCommand } from '@aws-sdk/client-dynamodb';
+import { DescribeTableCommand, DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
@@ -19,7 +19,11 @@ async function dynamodbPlugin(fastify: FastifyInstance) {
   const dynamodb = DynamoDBDocumentClient.from(dynamodbClient);
 
   try {
-    await dynamodbClient.send(new ListTablesCommand({}));
+    await dynamodbClient.send(
+      new DescribeTableCommand({
+        TableName: fastify.config.DYNAMODB_TABLE_NAME,
+      })
+    );
     fastify.log.info(`DynamoDB connected to ${fastify.config.AWS_REGION}`);
   } catch (error) {
     fastify.log.error('DynamoDB connection failed:', error);
