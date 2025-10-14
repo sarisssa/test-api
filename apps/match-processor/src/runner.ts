@@ -1,3 +1,5 @@
+import 'dotenv/config'
+
 import { sleep } from 'wage-shared'
 import { processMatchesOnce } from './processor.js'
 

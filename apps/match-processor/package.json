@@ -21,6 +21,8 @@
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.511.0",
     "@aws-sdk/lib-dynamodb": "^3.511.0",
+    "ioredis": "^5.3.2",
+    "dotenv": "^16.6.1",
     "wage-shared": "*"
   }
 }

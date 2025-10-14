@@ -1,8 +1,24 @@
-import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb'
+import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb'
 import { Match } from '../types.js'
 import { ddb } from './aws-clients.js'
 
 const WAGE_TABLE_NAME = process.env.WAGE_TABLE_NAME || 'WageTable'
+
+export interface AssetPriceRecord {
+  currentPrice?: number
+  lastUpdated?: string
+}
+
+export interface PriceRunMetrics {
+  fetchedAt: string
+  matchesProcessed: number
+  tickersProcessed: number
+  cacheHitCount: number
+  cacheMissCount: number
+  fallbackCount: number
+  staleSymbols: string[]
+  errors: Array<{ symbol: string; message: string; source: string }>
+}
 
 export const getActiveMatches = async (): Promise<Match[]> => {
   console.log('Attempting DynamoDB scan for active matches...')
@@ -110,7 +126,22 @@ export const batchUpdateAssetPrices = async (
 export const getAssetPrices = async (
   assets: Array<{ assetType: 'STOCK' | 'CRYPTO' | 'COMMODITY'; symbol: string }>
 ): Promise<Record<string, number>> => {
+  const records = await getAssetPriceRecords(assets)
   const priceMap: Record<string, number> = {}
+
+  for (const [symbol, record] of Object.entries(records)) {
+    if (typeof record.currentPrice === 'number') {
+      priceMap[symbol] = record.currentPrice
+    }
+  }
+
+  return priceMap
+}
+
+export const getAssetPriceRecords = async (
+  assets: Array<{ assetType: 'STOCK' | 'CRYPTO' | 'COMMODITY'; symbol: string }>
+): Promise<Record<string, AssetPriceRecord>> => {
+  const records: Record<string, AssetPriceRecord> = {}
 
   for (const { assetType, symbol } of assets) {
     try {
@@ -123,13 +154,47 @@ export const getAssetPrices = async (
       }
 
       const result = await ddb.send(new GetCommand(getParams))
-      if (result.Item && result.Item.currentPrice) {
-        priceMap[symbol] = result.Item.currentPrice as number
+      if (result.Item) {
+        const { currentPrice, lastUpdated } = result.Item
+        records[symbol] = {
+          currentPrice: typeof currentPrice === 'number' ? currentPrice : undefined,
+          lastUpdated: typeof lastUpdated === 'string' ? lastUpdated : undefined
+        }
+        continue
       }
     } catch (error) {
       console.warn(`Failed to fetch price for ${symbol}:`, error)
     }
+    // ensure record exists even if fetch failed
+    records[symbol] = {}
   }
 
-  return priceMap
+  return records
+}
+
+export const recordPriceRunMetrics = async (metrics: PriceRunMetrics): Promise<void> => {
+  const params = {
+    TableName: WAGE_TABLE_NAME,
+    Item: {
+      PK: 'PRICE_STATUS',
+      SK: 'SUMMARY',
+      fetchedAt: metrics.fetchedAt,
+      matchesProcessed: metrics.matchesProcessed,
+      tickersProcessed: metrics.tickersProcessed,
+      cacheHitCount: metrics.cacheHitCount,
+      cacheMissCount: metrics.cacheMissCount,
+      fallbackCount: metrics.fallbackCount,
+      staleSymbols: metrics.staleSymbols,
+      errorCount: metrics.errors.length,
+      errors: metrics.errors,
+      updatedAt: new Date().toISOString()
+    }
+  }
+
+  try {
+    await ddb.send(new PutCommand(params))
+    console.log('Persisted price run metrics.')
+  } catch (error) {
+    console.error('Failed to persist price run metrics:', error)
+  }
 }

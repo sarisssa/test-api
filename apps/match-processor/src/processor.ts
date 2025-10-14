@@ -1,4 +1,8 @@
-import { batchUpdateAssetPrices, getActiveMatches } from './services/dynamo-service.js'
+import {
+  batchUpdateAssetPrices,
+  getActiveMatches,
+  recordPriceRunMetrics
+} from './services/dynamo-service.js'
 import { fetchCurrentPrices } from './services/price-service.js'
 import { getActiveTickersWithTypesForCurrentMarket } from './utils/match-processor.js'
 
@@ -12,6 +16,20 @@ export const processMatchesOnce = async (): Promise<ProcessorResult> => {
 
   if (matches.length === 0) {
     console.log('No active matches found to process in this iteration.')
+    try {
+      await recordPriceRunMetrics({
+        fetchedAt: new Date().toISOString(),
+        matchesProcessed: 0,
+        tickersProcessed: 0,
+        cacheHitCount: 0,
+        cacheMissCount: 0,
+        fallbackCount: 0,
+        staleSymbols: [],
+        errors: []
+      })
+    } catch (metricsError) {
+      console.warn('Failed to record price metrics for empty iteration:', metricsError)
+    }
     return { matchesProcessed: 0, tickersProcessed: 0 }
   }
 
@@ -22,8 +40,26 @@ export const processMatchesOnce = async (): Promise<ProcessorResult> => {
     return { matchesProcessed: matches.length, tickersProcessed: 0 }
   }
 
-  const activeTickers = activeTickersWithTypes.map(({ ticker }) => ticker)
-  const priceData = await fetchCurrentPrices(activeTickers)
+  const assetsForPricing = activeTickersWithTypes.map(({ ticker, assetType }) => ({
+    symbol: ticker,
+    assetType
+  }))
+  const priceSummary = await fetchCurrentPrices(assetsForPricing)
+  const priceData = priceSummary.prices
+
+  if (priceSummary.errors.length > 0) {
+    console.warn(
+      'Encountered errors during price fetch:',
+      JSON.stringify(priceSummary.errors, null, 2)
+    )
+  }
+
+  if (priceSummary.staleSymbols.length > 0) {
+    console.warn(
+      'Stale price data detected for symbols:',
+      JSON.stringify(priceSummary.staleSymbols)
+    )
+  }
 
   const priceUpdates = activeTickersWithTypes
     .map(({ ticker, assetType }) => {
@@ -41,6 +77,25 @@ export const processMatchesOnce = async (): Promise<ProcessorResult> => {
     .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
 
   await batchUpdateAssetPrices(priceUpdates)
+
+  try {
+    await recordPriceRunMetrics({
+      fetchedAt: priceSummary.fetchedAt,
+      matchesProcessed: matches.length,
+      tickersProcessed: priceUpdates.length,
+      cacheHitCount: priceSummary.cacheHits.length,
+      cacheMissCount: priceSummary.apiBatchSymbols.length,
+      fallbackCount: priceSummary.apiFallbackSymbols.length,
+      staleSymbols: priceSummary.staleSymbols,
+      errors: priceSummary.errors.map(error => ({
+        symbol: error.symbol,
+        message: error.message,
+        source: error.source
+      }))
+    })
+  } catch (metricsError) {
+    console.warn('Failed to record price metrics:', metricsError)
+  }
 
   return {
     matchesProcessed: matches.length,

@@ -3,7 +3,7 @@ import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb'
 
 const DEFAULT_LOCALSTACK_ENDPOINT = 'http://host.docker.internal:4566'
 
-const resolveRegion = () => process.env.AWS_REGION || process.env.DYNAMODB_REGION || 'us-east-1'
+const resolveRegion = () => process.env.DYNAMODB_REGION || process.env.AWS_REGION || 'us-east-1'
 
 const shouldUseLocalstack =
   process.env.IS_OFFLINE === 'true' ||
@@ -21,6 +21,19 @@ const resolveEndpoint = () => {
 }
 
 const resolvedEndpoint = resolveEndpoint()
+
+console.log(
+  '[aws-clients] DynamoDB config',
+  JSON.stringify(
+    {
+      region: resolveRegion(),
+      endpoint: resolvedEndpoint || 'AWS default',
+      useLocalstack: shouldUseLocalstack
+    },
+    null,
+    2
+  )
+)
 
 export const ddb = DynamoDBDocument.from(
   new DynamoDB({
