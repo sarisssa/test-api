@@ -1,32 +1,22 @@
-import fp from 'fastify-plugin';
-import type { FastifyInstance } from 'fastify';
-import type {
-  SFNClient,
-  StartExecutionCommand,
-  StopExecutionCommand,
-} from '@aws-sdk/client-sfn';
+import fp from 'fastify-plugin'
+import type { FastifyInstance } from 'fastify'
 
 declare module 'fastify' {
   interface FastifyInstance {
-    stepFunctions?: SFNClient;
+    stepFunctions?: import('@aws-sdk/client-sfn').SFNClient
     stepFunctionsCommands?: {
-      StartExecutionCommand: typeof StartExecutionCommand;
-      StopExecutionCommand: typeof StopExecutionCommand;
-    };
+      StartExecutionCommand: typeof import('@aws-sdk/client-sfn').StartExecutionCommand
+      StopExecutionCommand: typeof import('@aws-sdk/client-sfn').StopExecutionCommand
+      DescribeStateMachineCommand: typeof import('@aws-sdk/client-sfn').DescribeStateMachineCommand
+    }
   }
 }
 
 export default fp(async (fastify: FastifyInstance) => {
-  let mod:
-    | {
-        SFNClient: typeof SFNClient;
-        StartExecutionCommand: typeof StartExecutionCommand;
-        StopExecutionCommand: typeof StopExecutionCommand;
-      }
-    | null = null;
+  let sfnModule: typeof import('@aws-sdk/client-sfn') | null = null
 
   try {
-    mod = (await import('@aws-sdk/client-sfn')) as typeof mod;
+    sfnModule = (await import('@aws-sdk/client-sfn')) as typeof import('@aws-sdk/client-sfn')
   } catch (error) {
     fastify.log.warn(
       {
@@ -36,24 +26,28 @@ export default fp(async (fastify: FastifyInstance) => {
             : error,
       },
       'Step Functions client not available - skipping initialization. Install @aws-sdk/client-sfn to enable match settlement workflows.'
-    );
-    return;
+    )
+    return
   }
 
-  const client = new mod.SFNClient({
+  const { SFNClient, StartExecutionCommand, StopExecutionCommand, DescribeStateMachineCommand } =
+    sfnModule
+
+  const client = new SFNClient({
     region: fastify.config.AWS_REGION,
     ...(fastify.config.STEP_FUNCTIONS_ENDPOINT
       ? { endpoint: fastify.config.STEP_FUNCTIONS_ENDPOINT }
       : {}),
-  });
+  })
 
-  fastify.decorate('stepFunctions', client);
+  fastify.decorate('stepFunctions', client)
   fastify.decorate('stepFunctionsCommands', {
-    StartExecutionCommand: mod.StartExecutionCommand,
-    StopExecutionCommand: mod.StopExecutionCommand,
-  });
+    StartExecutionCommand,
+    StopExecutionCommand,
+    DescribeStateMachineCommand,
+  })
 
   fastify.addHook('onClose', async () => {
-    client.destroy();
-  });
-});
+    client.destroy()
+  })
+})

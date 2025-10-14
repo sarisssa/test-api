@@ -24,3 +24,4 @@ lambda-placeholder.zip
 **/*.tsbuildinfo
 
 *.local.tfvars
+apps/api/debug-logs/

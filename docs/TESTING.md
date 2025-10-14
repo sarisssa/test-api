@@ -11,7 +11,7 @@ This guide explains how to exercise and verify the Wage backend (Fastify API + m
   - Redis (local install, Docker, or Elasticache endpoint).
   - DynamoDB (AWS table or LocalStack/DynamoDB Local).
   - Twelve Data API key (set `TWELVE_DATA_API_KEY` or mock responses).
-- Optional: AWS Step Functions state machine ARN (`MATCH_SETTLEMENT_STATE_MACHINE_ARN`) when exercising settlement workflows. LocalStack works too—set `STEP_FUNCTIONS_ENDPOINT=http://localhost:4566` and create the state machine there.
+- Optional (recommended for settlement tests): configure AWS Step Functions. For LocalStack set `STEP_FUNCTIONS_ENDPOINT=http://localhost:4566`, then run `npm run setup:step-functions -w api` to create or update the match-settlement workflow. Copy the printed ARN into `MATCH_SETTLEMENT_STATE_MACHINE_ARN` before starting the API.
 - For WebSocket/manual flows, the API service must be running (`npm run dev:api` or deployed Fargate task).
 
 Environment variables live under `base/apps/api/.env` and `base/apps/match-processor/.env`. Create `.env.local` copies whenever you need to override defaults.
@@ -53,6 +53,12 @@ We are standardising on Docker Compose for shared infrastructure. Until the comp
    ```
 
 4. **Exercise workflows** with the manual steps from section 4.
+
+5. **End-to-end smoke**  
+   ```bash
+   npm run system:test -w api
+   ```  
+   Runs the orchestration script that prepares DynamoDB, seeds assets/players, drives WebSocket matchmaking, and (optionally) validates Step Functions settlements against LocalStack.
 
 Future work: add a `docker-compose.test.yml` that boots Redis + DynamoDB Local and exposes them through `npm run test:integration`.
 

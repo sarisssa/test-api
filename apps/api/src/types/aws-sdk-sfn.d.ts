@@ -12,6 +12,21 @@ declare module '@aws-sdk/client-sfn' {
     constructor(input: Record<string, unknown>);
   }
 
+  export class DescribeStateMachineCommand {
+    readonly input: Record<string, unknown>;
+    constructor(input: Record<string, unknown>);
+  }
+
+  export class CreateStateMachineCommand {
+    readonly input: Record<string, unknown>;
+    constructor(input: Record<string, unknown>);
+  }
+
+  export class UpdateStateMachineCommand {
+    readonly input: Record<string, unknown>;
+    constructor(input: Record<string, unknown>);
+  }
+
   export class StopExecutionCommand {
     readonly input: Record<string, unknown>;
     constructor(input: Record<string, unknown>);

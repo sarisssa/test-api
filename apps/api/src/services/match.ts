@@ -352,6 +352,11 @@ export const handleMatchStart = async (
       fastify.stepFunctionsCommands?.StartExecutionCommand
     ) {
       try {
+        const tableName =
+          fastify.config.WAGE_TABLE_NAME ||
+          fastify.config.DYNAMODB_TABLE_NAME ||
+          'WageTable';
+
         const startCommand =
           new fastify.stepFunctionsCommands.StartExecutionCommand({
             stateMachineArn:
@@ -362,6 +367,7 @@ export const handleMatchStart = async (
               matchPk: `MATCH#${matchId}`,
               matchSk: 'DETAILS',
               matchTentativeEndTime: matchTentativeEndTimeIso,
+              tableName,
             }),
           });
 
