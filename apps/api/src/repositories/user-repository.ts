@@ -22,22 +22,75 @@ export const createUserRepository = (fastify: FastifyInstance) => {
   );
   const { log: logger } = fastify;
 
+  const buildUserKey = (hashedPhoneNumber: string) => ({
+    PK: `USER#${hashedPhoneNumber}` as const,
+    SK: 'PROFILE' as const,
+  });
+
+  const normaliseUserItem = (item: DynamoDBUserItem): DynamoDBUserItem => {
+    const pk = item.pk ?? (item.PK as `USER#${string}`);
+    const sk = item.sk ?? (item.SK as 'PROFILE' | undefined) ?? 'PROFILE';
+
+    return {
+      ...item,
+      pk,
+      sk,
+      PK: (item.PK ?? pk) as `USER#${string}`,
+      SK: (item.SK ?? sk) as 'PROFILE',
+    };
+  };
+
+  const getUserItemWithLegacyKeys = (item: DynamoDBUserItem): DynamoDBUserItem => {
+    const normalised = normaliseUserItem(item);
+    return {
+      ...normalised,
+      pk: normalised.pk,
+      sk: normalised.sk,
+      PK: normalised.PK,
+      SK: normalised.SK,
+    };
+  };
+
   const fetchUserByPhone = async (
     phoneNumber: string
   ): Promise<DynamoDBUserItem | undefined> => {
     const hashedPhoneNumber = hashPhoneNumber(phoneNumber);
+    const tableName = fastify.config.DYNAMODB_TABLE_NAME;
+    const key = buildUserKey(hashedPhoneNumber);
 
-    const result = await dynamodb.send(
-      new GetCommand({
-        TableName: fastify.config.DYNAMODB_TABLE_NAME,
-        Key: {
-          pk: `USER#${hashedPhoneNumber}`,
-          sk: 'PROFILE',
-        },
-      })
-    );
+    try {
+      const result = await dynamodb.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: key,
+        })
+      );
 
-    return result.Item as DynamoDBUserItem | undefined;
+      if (!result.Item) {
+        return undefined;
+      }
+
+      return getUserItemWithLegacyKeys(result.Item as DynamoDBUserItem);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'ValidationException') {
+        const legacyResult = await dynamodb.send(
+          new GetCommand({
+            TableName: tableName,
+            Key: {
+              pk: key.PK,
+              sk: key.SK,
+            },
+          })
+        );
+
+        if (!legacyResult.Item) {
+          return undefined;
+        }
+
+        return getUserItemWithLegacyKeys(legacyResult.Item as DynamoDBUserItem);
+      }
+      throw error;
+    }
   };
 
   const persistNewUser = async (
@@ -46,10 +99,13 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     const hashedPhoneNumber = hashPhoneNumber(phoneNumber);
     const normalizedPhone = formatPhoneNumber(phoneNumber);
     const userId = uuidv4();
+    const key = buildUserKey(hashedPhoneNumber);
 
     const user: DynamoDBUserItem = {
-      pk: `USER#${hashedPhoneNumber}`,
-      sk: 'PROFILE',
+      pk: key.PK,
+      sk: key.SK,
+      PK: key.PK,
+      SK: key.SK,
       EntityType: 'User',
       userId,
       hashedPhoneNumber,
@@ -71,7 +127,7 @@ export const createUserRepository = (fastify: FastifyInstance) => {
       await dynamodb.send(
         new PutCommand({
           TableName: fastify.config.DYNAMODB_TABLE_NAME,
-          Item: user,
+          Item: getUserItemWithLegacyKeys(user),
           ConditionExpression: 'attribute_not_exists(pk)',
         })
       );
@@ -85,11 +141,11 @@ export const createUserRepository = (fastify: FastifyInstance) => {
       return user;
     } catch (error) {
       if (error instanceof ConditionalCheckFailedException) {
-        logger.warn({
-          phoneNumber,
-          msg: 'User already exists, another concurrent request likely created it.',
-        });
-        // In this case, fetch the existing user that was just created by the other task
+      logger.warn({
+        phoneNumber,
+        msg: 'User already exists, another concurrent request likely created it.',
+      });
+      // In this case, fetch the existing user that was just created by the other task
         const existingUser = await fetchUserByPhone(phoneNumber);
         if (existingUser) {
           return existingUser;
@@ -118,12 +174,17 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     user: DynamoDBUserItem
   ): Promise<void> => {
     try {
+      const key = buildUserKey(user.hashedPhoneNumber);
       await dynamodb.send(
-        new PutCommand({
+        new UpdateCommand({
           TableName: fastify.config.DYNAMODB_TABLE_NAME,
-          Item: {
-            ...user,
-            lastLoggedIn: new Date().toISOString(),
+          Key: {
+            PK: key.PK,
+            SK: key.SK,
+          },
+          UpdateExpression: 'SET lastLoggedIn = :lastLoggedIn',
+          ExpressionAttributeValues: {
+            ':lastLoggedIn': new Date().toISOString(),
           },
         })
       );
@@ -133,6 +194,27 @@ export const createUserRepository = (fastify: FastifyInstance) => {
         msg: 'User last login updated',
       });
     } catch (error) {
+      if (error instanceof Error && error.name === 'ValidationException') {
+        await dynamodb.send(
+          new UpdateCommand({
+            TableName: fastify.config.DYNAMODB_TABLE_NAME,
+            Key: {
+              pk: user.pk,
+              sk: user.sk,
+            },
+            UpdateExpression: 'SET lastLoggedIn = :lastLoggedIn',
+            ExpressionAttributeValues: {
+              ':lastLoggedIn': new Date().toISOString(),
+            },
+          })
+        );
+        logger.info({
+          userId: user.userId,
+          msg: 'User last login updated using legacy key casing',
+        });
+        return;
+      }
+
       logger.error({
         userId: user.userId,
         error,
@@ -157,7 +239,7 @@ export const createUserRepository = (fastify: FastifyInstance) => {
       const result = await dynamodb.send(new ScanCommand(scanParams));
 
       if (result.Items && result.Items.length > 0) {
-        const user = result.Items[0] as DynamoDBUserItem;
+        const user = getUserItemWithLegacyKeys(result.Items[0] as DynamoDBUserItem);
 
         return user;
       }
@@ -194,7 +276,7 @@ export const createUserRepository = (fastify: FastifyInstance) => {
       );
 
       if (result.Items && result.Items.length > 0) {
-        return result.Items[0] as DynamoDBUserItem;
+        return getUserItemWithLegacyKeys(result.Items[0] as DynamoDBUserItem);
       }
 
       return undefined;

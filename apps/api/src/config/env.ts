@@ -76,6 +76,10 @@ export const envSchema: FastifyEnvOptions['schema'] = {
       type: 'string',
       default: 'false',
     },
+    PRICE_STATUS_STALE_THRESHOLD_SECONDS: {
+      type: 'string',
+      default: '180',
+    },
     HOST: {
       type: 'string',
       default: '0.0.0.0',
@@ -111,4 +115,5 @@ export type Env = {
   WAGE_TABLE_NAME: string;
   REDIS_TLS_REJECT_UNAUTHORIZED: string;
   USE_TWILIO_STUB?: string;
+  PRICE_STATUS_STALE_THRESHOLD_SECONDS: string;
 };
