@@ -11,6 +11,7 @@ This guide explains how to exercise and verify the Wage backend (Fastify API + m
   - Redis (local install, Docker, or Elasticache endpoint).
   - DynamoDB (AWS table or LocalStack/DynamoDB Local).
   - Twelve Data API key (set `TWELVE_DATA_API_KEY` or mock responses).
+- Optional: AWS Step Functions state machine ARN (`MATCH_SETTLEMENT_STATE_MACHINE_ARN`) when exercising settlement workflows. LocalStack works too—set `STEP_FUNCTIONS_ENDPOINT=http://localhost:4566` and create the state machine there.
 - For WebSocket/manual flows, the API service must be running (`npm run dev:api` or deployed Fargate task).
 
 Environment variables live under `base/apps/api/.env` and `base/apps/match-processor/.env`. Create `.env.local` copies whenever you need to override defaults.
