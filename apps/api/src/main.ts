@@ -9,6 +9,7 @@ import Fastify, { FastifyInstance } from 'fastify';
 import { envSchema, type Env } from './config/env.js';
 import authPlugin from './plugins/auth.js';
 import dynamodbPlugin from './plugins/dynamodb.js';
+import stepFunctionsPlugin from './plugins/step-functions.js';
 import repositoriesPlugin from './plugins/repositories.js';
 import s3Plugin from './plugins/s3.js';
 import twilioPlugin from './plugins/twilio.js';
@@ -68,6 +69,7 @@ async function buildApp(): Promise<FastifyInstance> {
   );
 
   await fastify.register(dynamodbPlugin);
+  await fastify.register(stepFunctionsPlugin);
   await fastify.register(s3Plugin);
   await fastify.register(twilioPlugin);
   await fastify.register(repositoriesPlugin);

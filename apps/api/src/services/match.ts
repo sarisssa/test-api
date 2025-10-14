@@ -22,6 +22,40 @@ import {
 import { validateTickerSymbol } from './asset.js';
 import { broadcastToMatch } from './connection-manager.js';
 
+const MATCH_DURATION_MS = 30 * 1000; // TODO: externalise to configuration
+
+const stopSettlementExecution = async (
+  fastify: FastifyInstance,
+  executionArn: string,
+  cause: string
+): Promise<void> => {
+  if (
+    !fastify.stepFunctions ||
+    !fastify.stepFunctionsCommands?.StopExecutionCommand
+  ) {
+    return;
+  }
+
+  try {
+    const stopCommand = new fastify.stepFunctionsCommands.StopExecutionCommand({
+      executionArn,
+      error: 'MatchTerminated',
+      cause,
+    });
+
+    await fastify.stepFunctions.send(stopCommand);
+  } catch (error) {
+    fastify.log.warn(
+      {
+        error,
+        executionArn,
+        cause,
+      },
+      'Failed to stop Step Functions execution'
+    );
+  }
+};
+
 const initializeMatchAssetPricing = async (
   fastify: FastifyInstance,
   matchId: string,
@@ -258,6 +292,7 @@ export const handleMatchStart = async (
   fastify: FastifyInstance,
   matchId: string
 ): Promise<DynamoDBMatchItem> => {
+  let settlementExecutionArn: string | undefined;
   try {
     const existingMatch = await fastify.repositories.match.getMatch(matchId);
     if (!existingMatch) {
@@ -304,7 +339,61 @@ export const handleMatchStart = async (
     }
 
     const fetchedPriceData = await priceApiResponse.json();
-    const matchStartTimeIso = new Date().toISOString();
+    const matchStartDate = new Date();
+    const matchStartTimeIso = matchStartDate.toISOString();
+    const matchTentativeEndTimeIso = new Date(
+      matchStartDate.getTime() + MATCH_DURATION_MS
+    ).toISOString();
+
+    if (
+      fastify.config.MATCH_SETTLEMENT_STATE_MACHINE_ARN &&
+      fastify.config.MATCH_SETTLEMENT_STATE_MACHINE_ARN.length > 0 &&
+      fastify.stepFunctions &&
+      fastify.stepFunctionsCommands?.StartExecutionCommand
+    ) {
+      try {
+        const startCommand =
+          new fastify.stepFunctionsCommands.StartExecutionCommand({
+            stateMachineArn:
+              fastify.config.MATCH_SETTLEMENT_STATE_MACHINE_ARN,
+            name: `match-${matchId}-${Date.now()}`,
+            input: JSON.stringify({
+              matchId,
+              matchPk: `MATCH#${matchId}`,
+              matchSk: 'DETAILS',
+              matchTentativeEndTime: matchTentativeEndTimeIso,
+            }),
+          });
+
+        const startResponse = await fastify.stepFunctions.send(startCommand);
+        if (
+          startResponse &&
+          typeof startResponse === 'object' &&
+          'executionArn' in startResponse
+        ) {
+          settlementExecutionArn = (startResponse as {
+            executionArn?: string;
+          }).executionArn;
+        }
+      } catch (startError) {
+        fastify.log.error(
+          {
+            error: startError,
+            matchId,
+            stateMachineArn:
+              fastify.config.MATCH_SETTLEMENT_STATE_MACHINE_ARN,
+          },
+          'Failed to start settlement workflow execution'
+        );
+      }
+    } else {
+      fastify.log.debug(
+        {
+          matchId,
+        },
+        'Settlement workflow not configured; skipping Step Functions execution'
+      );
+    }
 
     // Update player assets with initial prices and shares
     await initializeMatchAssetPricing(
@@ -315,10 +404,11 @@ export const handleMatchStart = async (
     );
 
     try {
-      await fastify.repositories.match.transitionMatchToInProgress(
-        matchId,
-        matchStartTimeIso
-      );
+      await fastify.repositories.match.transitionMatchToInProgress(matchId, {
+        matchStartTimeIso,
+        matchTentativeEndTimeIso,
+        settlementExecutionArn,
+      });
     } catch (error: unknown) {
       if (
         error instanceof Error &&
@@ -358,6 +448,14 @@ export const handleMatchStart = async (
       msg: 'Error starting match',
     });
 
+    if (settlementExecutionArn) {
+      await stopSettlementExecution(
+        fastify,
+        settlementExecutionArn,
+        `Rolling back match start for ${matchId} due to error`
+      );
+    }
+
     if (
       error instanceof Error &&
       error.name !== 'ConditionalCheckFailedException'
@@ -379,17 +477,150 @@ export const handleMatchStart = async (
   }
 };
 
+export const handlePlayerForfeit = async (
+  fastify: FastifyInstance,
+  matchId: string,
+  forfeitingPlayerId: string
+): Promise<DynamoDBMatchItem | undefined> => {
+  const match = await fastify.repositories.match.getMatch(matchId);
+  if (!match) {
+    throw new Error('Match not found when attempting to forfeit');
+  }
+
+  if (match.status !== 'in_progress') {
+    fastify.log.info(
+      {
+        matchId,
+        status: match.status,
+        forfeitingPlayerId,
+      },
+      'Ignoring forfeit request - match is not in progress'
+    );
+    return match;
+  }
+
+  if (match.matchSettlementExecutionArn) {
+    await stopSettlementExecution(
+      fastify,
+      match.matchSettlementExecutionArn,
+      `Player ${forfeitingPlayerId} forfeited match ${matchId}`
+    );
+  }
+
+  const winnerId =
+    match.players.find(playerId => playerId !== forfeitingPlayerId) ??
+    forfeitingPlayerId;
+
+  const matchEndedAtIso = new Date().toISOString();
+
+  try {
+    const updatedMatch =
+      await fastify.repositories.match.completeMatchWithOutcome(matchId, {
+        completionReason: 'forfeited',
+        matchEndedAtIso,
+        winnerId,
+        loserId: forfeitingPlayerId,
+      });
+
+    if (updatedMatch) {
+      await broadcastToMatch(fastify, updatedMatch.matchId, {
+        type: 'match_completed',
+        matchId: updatedMatch.matchId,
+        completionReason: 'forfeited',
+        winnerId,
+        forfeitingPlayerId,
+        matchEndedAt: updatedMatch.matchEndedAt,
+      });
+    }
+
+    return updatedMatch ?? match;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.name === 'ConditionalCheckFailedException'
+    ) {
+      fastify.log.info(
+        {
+          matchId,
+          forfeitingPlayerId,
+        },
+        'Forfeit ignored: match already completed'
+      );
+      return fastify.repositories.match.getMatch(matchId);
+    }
+
+    throw error;
+  }
+};
+
 export const handleMatchEnd = async (
   fastify: FastifyInstance,
   matchId: string,
   winner: string,
   gameData: unknown
 ) => {
-  // TODO: Implement match end logic
-  console.log('Match end not implemented', {
-    fastify,
-    matchId,
-    winner,
-    gameData,
-  });
+  const match = await fastify.repositories.match.getMatch(matchId);
+  if (!match) {
+    throw new Error('Match not found when attempting to end');
+  }
+
+  if (match.matchSettlementExecutionArn) {
+    await stopSettlementExecution(
+      fastify,
+      match.matchSettlementExecutionArn,
+      `Match ${matchId} completed manually`
+    );
+  }
+
+  const matchEndedAtIso = new Date().toISOString();
+  const loserId = match.players.find(playerId => playerId !== winner);
+
+  const finalScores =
+    gameData &&
+    typeof gameData === 'object' &&
+    gameData !== null &&
+    'finalScores' in gameData &&
+    typeof (gameData as { finalScores?: Record<string, number> }).finalScores ===
+      'object'
+      ? (gameData as { finalScores?: Record<string, number> }).finalScores
+      : undefined;
+
+  try {
+    const updatedMatch =
+      await fastify.repositories.match.completeMatchWithOutcome(matchId, {
+        completionReason: 'manual',
+        matchEndedAtIso,
+        winnerId: winner,
+        loserId,
+        finalScores,
+      });
+
+    if (updatedMatch) {
+      await broadcastToMatch(fastify, updatedMatch.matchId, {
+        type: 'match_completed',
+        matchId: updatedMatch.matchId,
+        completionReason: 'manual',
+        winnerId: winner,
+        matchEndedAt: updatedMatch.matchEndedAt,
+        finalScores: updatedMatch.finalScores,
+      });
+      return;
+    }
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.name === 'ConditionalCheckFailedException'
+    ) {
+      fastify.log.info(
+        {
+          matchId,
+          winner,
+        },
+        'Match already completed before handleMatchEnd executed'
+      );
+      return;
+    }
+
+    throw error;
+  }
 };
