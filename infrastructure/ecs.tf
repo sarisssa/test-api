@@ -114,19 +114,12 @@ resource "aws_iam_role_policy" "ecs_task_dynamodb_policy" {
           "dynamodb:Scan",
           "dynamodb:BatchGetItem",
           "dynamodb:BatchWriteItem",
-          "dynamodb:DescribeTable"
+          "dynamodb:DescribeTable",
         ],
         Resource = [
           aws_dynamodb_table.main.arn,
           "${aws_dynamodb_table.main.arn}/*"
         ]
-      },
-      {
-        Effect = "Allow",
-        Action = [
-          "dynamodb:ListTables"
-        ],
-        Resource = "*"
       }
     ]
   })
@@ -389,7 +382,15 @@ resource "aws_ecs_task_definition" "backend_task" {
         {
           name  = "AWS_REGION"
           value = var.aws_region
-        }
+        },
+        //TODO: Amend hardcoded values
+        {
+          name  = "DYNAMODB_TABLE_NAME"
+          value = "wage-main-dev"
+          }, {
+          name  = "S3_BUCKET_NAME"
+          value = "wage-profile-images-dev"
+        },
       ]
       healthCheck = {
         command     = ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
