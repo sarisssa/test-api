@@ -30,12 +30,6 @@ declare module '@fastify/multipart' {
 }
 
 declare module 'fastify' {
-  interface FastifyInstance {
-    jwt: {
-      sign(payload: object, options?: { expiresIn?: string }): string;
-      verify<T = unknown>(token: string): T;
-    };
-  }
   interface FastifyRequest {
     jwtVerify(): Promise<{
       userId: string;
@@ -47,5 +41,6 @@ declare module 'fastify' {
       phoneNumber: string;
       type: 'access_token' | 'refresh_token';
     };
+    file(): Promise<import('@fastify/multipart').MultipartFile | undefined>;
   }
 }

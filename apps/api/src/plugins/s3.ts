@@ -1,4 +1,5 @@
 import { S3Client } from '@aws-sdk/client-s3';
+import { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
 declare module 'fastify' {
@@ -7,7 +8,7 @@ declare module 'fastify' {
   }
 }
 
-export default fp(async fastify => {
+export default fp(async (fastify: FastifyInstance) => {
   const s3Client = new S3Client({
     region: fastify.config.AWS_REGION,
   });
