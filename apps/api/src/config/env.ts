@@ -64,6 +64,14 @@ export const envSchema: FastifyEnvOptions['schema'] = {
       type: 'string',
       minLength: 1,
     },
+    MATCH_SETTLEMENT_STATE_MACHINE_ARN: {
+      type: 'string',
+      default: '',
+    },
+    STEP_FUNCTIONS_ENDPOINT: {
+      type: 'string',
+      default: '',
+    },
     WAGE_TABLE_NAME: {
       type: 'string',
       minLength: 1,
@@ -109,11 +117,13 @@ export type Env = {
   TWILIO_ACCOUNT_SID: string;
   TWILIO_AUTH_TOKEN: string;
   TWILIO_VERIFY_SERVICE_SID: string;
+  MATCH_SETTLEMENT_STATE_MACHINE_ARN?: string;
   HOST: string;
   NODE_ENV: 'development' | 'production' | 'test';
   PORT: number;
   WAGE_TABLE_NAME: string;
   REDIS_TLS_REJECT_UNAUTHORIZED: string;
+  STEP_FUNCTIONS_ENDPOINT?: string;
   USE_TWILIO_STUB?: string;
   PRICE_STATUS_STALE_THRESHOLD_SECONDS: string;
 };

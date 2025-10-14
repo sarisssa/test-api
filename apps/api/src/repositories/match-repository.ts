@@ -20,6 +20,11 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
   );
   const { redis, log: logger } = fastify;
 
+  const resolveMatchTableName = () =>
+    fastify.config.WAGE_TABLE_NAME ||
+    fastify.config.DYNAMODB_TABLE_NAME ||
+    'WageTable';
+
   const persistNewMatch = async (players: string[]): Promise<MatchResult> => {
     const matchId = uuidv4();
     const nowMs = Date.now();
@@ -50,7 +55,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
 
       const dbWritePromise = dynamodb.send(
         new PutCommand({
-          TableName: 'WageTable',
+          TableName: resolveMatchTableName(),
           Item: {
             PK: `MATCH#${matchId}`,
             SK: 'DETAILS',
@@ -114,7 +119,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
 
       const matchResult = await dynamodb.send(
         new GetCommand({
-          TableName: 'WageTable',
+          TableName: resolveMatchTableName(),
           Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
         })
       );
@@ -165,7 +170,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     try {
       await dynamodb.send(
         new UpdateCommand({
-          TableName: 'WageTable',
+          TableName: resolveMatchTableName(),
           Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
           ConditionExpression:
             'attribute_exists(PK) AND attribute_exists(SK) AND #status = :assetStatus AND size(playerAssets.#userId.assets) < :maxAssets',
@@ -209,7 +214,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     try {
       await dynamodb.send(
         new UpdateCommand({
-          TableName: 'WageTable',
+          TableName: resolveMatchTableName(),
           Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
           ConditionExpression:
             'attribute_exists(PK) AND attribute_exists(SK) AND #status = :assetStatus',
@@ -249,7 +254,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     try {
       await dynamodb.send(
         new UpdateCommand({
-          TableName: 'WageTable',
+          TableName: resolveMatchTableName(),
           Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
           UpdateExpression: 'SET playerAssets.#userId.readyAt = :now',
           ExpressionAttributeNames: { '#userId': userId },
@@ -286,31 +291,47 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
 
   const transitionMatchToInProgress = async (
     matchId: string,
-    matchStartTimeIso: string
+    params: {
+      matchStartTimeIso: string;
+      matchTentativeEndTimeIso: string;
+      settlementExecutionArn?: string;
+    }
   ): Promise<void> => {
     try {
-      //TODO: 30 second match time for now, please amend later
-      const matchTentativeEndTimeIso = new Date(
-        new Date(matchStartTimeIso).getTime() + 30 * 1000
-      ).toISOString();
+      const tableName = resolveMatchTableName();
+
+      const updateExpressions = [
+        '#status = :newStatus',
+        'matchStartedAt = :now',
+        'matchTentativeEndTime = :tentativeEndTime',
+      ];
+
+      const expressionAttributeNames: Record<string, string> = {
+        '#status': 'status',
+      };
+
+      const expressionAttributeValues: Record<string, unknown> = {
+        ':newStatus': 'in_progress',
+        ':expectedStatus': 'asset_selection',
+        ':now': params.matchStartTimeIso,
+        ':tentativeEndTime': params.matchTentativeEndTimeIso,
+      };
+
+      if (params.settlementExecutionArn) {
+        updateExpressions.push('matchSettlementExecutionArn = :executionArn');
+        expressionAttributeValues[':executionArn'] =
+          params.settlementExecutionArn;
+      }
 
       await dynamodb.send(
         new UpdateCommand({
-          TableName: 'WageTable',
+          TableName: tableName,
           Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
-          UpdateExpression:
-            'SET #status = :newStatus, matchStartedAt = :now, matchTentativeEndTime = :tentativeEndTime',
+          UpdateExpression: `SET ${updateExpressions.join(', ')}`,
           ConditionExpression:
             'attribute_exists(PK) AND attribute_exists(SK) AND #status = :expectedStatus',
-          ExpressionAttributeNames: {
-            '#status': 'status',
-          },
-          ExpressionAttributeValues: {
-            ':newStatus': 'in_progress',
-            ':expectedStatus': 'asset_selection',
-            ':now': matchStartTimeIso,
-            ':tentativeEndTime': matchTentativeEndTimeIso,
-          },
+          ExpressionAttributeNames: expressionAttributeNames,
+          ExpressionAttributeValues: expressionAttributeValues,
         })
       );
 
@@ -337,7 +358,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     try {
       await dynamodb.send(
         new UpdateCommand({
-          TableName: 'WageTable',
+          TableName: resolveMatchTableName(),
           Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
           UpdateExpression: 'SET #status = :status',
           ConditionExpression: 'attribute_exists(PK) AND attribute_exists(SK)',
@@ -373,7 +394,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     try {
       await dynamodb.send(
         new UpdateCommand({
-          TableName: 'WageTable',
+          TableName: resolveMatchTableName(),
           Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
           UpdateExpression: `SET playerAssets.#userId.assets[${assetIndex}].initialPrice = :initialPrice, playerAssets.#userId.assets[${assetIndex}].shares = :shares`,
           ExpressionAttributeNames: {
@@ -407,6 +428,94 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     }
   };
 
+  const completeMatchWithOutcome = async (
+    matchId: string,
+    params: {
+      completionReason: 'time_expired' | 'forfeited' | 'manual';
+      matchEndedAtIso: string;
+      winnerId?: string;
+      loserId?: string;
+      finalScores?: Record<string, number>;
+      expectedStatus?: 'asset_selection' | 'in_progress' | 'completed';
+    }
+  ): Promise<DynamoDBMatchItem | undefined> => {
+    const tableName = resolveMatchTableName();
+
+    const setExpressions = [
+      '#status = :completed',
+      'matchEndedAt = :matchEndedAt',
+      '#completionReason = :completionReason',
+    ];
+
+    const expressionAttributeNames: Record<string, string> = {
+      '#status': 'status',
+      '#completionReason': 'completionReason',
+    };
+
+    const expressionAttributeValues: Record<string, unknown> = {
+      ':completed': 'completed',
+      ':matchEndedAt': params.matchEndedAtIso,
+      ':completionReason': params.completionReason,
+      ':expectedStatus': params.expectedStatus ?? 'in_progress',
+    };
+
+    if (params.winnerId) {
+      expressionAttributeNames['#winner'] = 'winner';
+      expressionAttributeValues[':winner'] = params.winnerId;
+      setExpressions.push('#winner = :winner');
+    }
+
+    if (params.loserId) {
+      expressionAttributeNames['#loser'] = 'loser';
+      expressionAttributeValues[':loser'] = params.loserId;
+      setExpressions.push('#loser = :loser');
+    }
+
+    if (params.finalScores) {
+      expressionAttributeNames['#finalScores'] = 'finalScores';
+      expressionAttributeValues[':finalScores'] = params.finalScores;
+      setExpressions.push('#finalScores = :finalScores');
+    }
+
+    const removeExpressions = ['matchSettlementExecutionArn'];
+
+    try {
+      await dynamodb.send(
+        new UpdateCommand({
+          TableName: tableName,
+          Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
+          UpdateExpression: `SET ${setExpressions.join(', ')}${
+            removeExpressions.length > 0
+              ? ` REMOVE ${removeExpressions.join(', ')}`
+              : ''
+          }`,
+          ConditionExpression:
+            'attribute_exists(PK) AND attribute_exists(SK) AND #status = :expectedStatus',
+          ExpressionAttributeNames: expressionAttributeNames,
+          ExpressionAttributeValues: expressionAttributeValues,
+        })
+      );
+
+      await redis.del(REDIS_KEYS.MATCH(matchId));
+
+      return await getMatch(matchId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.name === 'ConditionalCheckFailedException'
+      ) {
+        throw error;
+      }
+      logger.error({
+        error,
+        matchId,
+        params,
+        msg: 'Error completing match with outcome',
+      });
+      throw error;
+    }
+  };
+
   return {
     getMatch,
     persistNewMatch,
@@ -416,5 +525,6 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     transitionMatchToInProgress,
     transitionMatchToAssetSelection,
     setAssetInitialPricing,
+    completeMatchWithOutcome,
   };
 };
