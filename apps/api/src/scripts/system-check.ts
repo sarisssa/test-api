@@ -790,13 +790,13 @@ async function runLobbyTests(players: PlayerAuth[]) {
     ])
     console.log('   ✅ Match transitioned to in_progress')
 
-    clientA.send('set_match_duration', { matchId, durationSeconds: 15 })
+    clientA.send('set_match_duration', { matchId, durationSeconds: 30 })
     await clientA.waitForLabel('set_match_duration', 10_000, { expectOk: true })
     await Promise.race([
       clientA.waitForLabel('match_duration_updated', 10_000),
       clientB.waitForLabel('match_duration_updated', 10_000),
     ])
-    console.log('   ✅ Match duration shortened to 15 seconds')
+    console.log('   ✅ Match duration shortened to 30 seconds')
 
     await updateMatchPlayerAssets(matchId, {
       [playerA.userId]: 1.5,

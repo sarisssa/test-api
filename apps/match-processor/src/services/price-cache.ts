@@ -186,7 +186,8 @@ export const getPriceCacheClient = (): PriceCacheClient => {
 }
 
 export const isCacheEntryFresh = (entry: PriceCacheEntry): boolean => {
-  if (!entry || typeof entry.currentPrice !== 'number') {
+  // Treat missing or zero prices as not fresh to force an API fetch
+  if (!entry || typeof entry.currentPrice !== 'number' || entry.currentPrice <= 0) {
     return false
   }
 
