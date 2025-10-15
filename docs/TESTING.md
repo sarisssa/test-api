@@ -33,6 +33,9 @@ Environment variables live under `base/apps/api/.env` and `base/apps/match-proce
 ## 3. Integration Test Harness
 
 We are standardising on Docker Compose for shared infrastructure. Until the compose files land, you can mimic the staging stack manually:
+You can skip steps 3 and 4, assuming you have steps 1 and 2 set-up, just run step 5 with `localstack`, `api` and `match-processor` running.
+
+
 
 1. **Redis**  
    ```bash
