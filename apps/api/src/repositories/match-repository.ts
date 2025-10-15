@@ -384,6 +384,37 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     }
   };
 
+  const updateMatchTentativeEndTime = async (
+    matchId: string,
+    params: {
+      matchTentativeEndTimeIso: string;
+      settlementExecutionArn?: string;
+    }
+  ): Promise<void> => {
+    const expressions = ['matchTentativeEndTime = :tentativeEndTime'];
+
+    const expressionAttributeValues: Record<string, unknown> = {
+      ':tentativeEndTime': params.matchTentativeEndTimeIso,
+    };
+
+    if (params.settlementExecutionArn) {
+      expressions.push('matchSettlementExecutionArn = :executionArn');
+      expressionAttributeValues[':executionArn'] = params.settlementExecutionArn;
+    }
+
+    await dynamodb.send(
+      new UpdateCommand({
+        TableName: resolveMatchTableName(),
+        Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
+        UpdateExpression: `SET ${expressions.join(', ')}`,
+        ConditionExpression: 'attribute_exists(PK) AND attribute_exists(SK)',
+        ExpressionAttributeValues: expressionAttributeValues,
+      })
+    );
+
+    await redis.del(REDIS_KEYS.MATCH(matchId));
+  };
+
   const setAssetInitialPricing = async (
     matchId: string,
     userId: string,
@@ -526,5 +557,6 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     transitionMatchToAssetSelection,
     setAssetInitialPricing,
     completeMatchWithOutcome,
+    updateMatchTentativeEndTime,
   };
 };

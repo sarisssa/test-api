@@ -24,6 +24,54 @@ import { broadcastToMatch } from './connection-manager.js';
 
 const MATCH_DURATION_MS = 30 * 1000; // TODO: externalise to configuration
 
+const resolveMatchTableName = (fastify: FastifyInstance) =>
+  fastify.config.WAGE_TABLE_NAME ||
+  fastify.config.DYNAMODB_TABLE_NAME ||
+  'WageTable'
+
+const startSettlementExecution = async (
+  fastify: FastifyInstance,
+  matchId: string,
+  matchTentativeEndTimeIso: string
+): Promise<string | undefined> => {
+  if (
+    !fastify.config.MATCH_SETTLEMENT_STATE_MACHINE_ARN ||
+    !fastify.stepFunctions ||
+    !fastify.stepFunctionsCommands?.StartExecutionCommand
+  ) {
+    fastify.log.debug({ matchId }, 'Settlement workflow not configured; skipping Step Functions execution')
+    return undefined
+  }
+
+  try {
+    const tableName = resolveMatchTableName(fastify)
+    const startCommand = new fastify.stepFunctionsCommands.StartExecutionCommand({
+      stateMachineArn: fastify.config.MATCH_SETTLEMENT_STATE_MACHINE_ARN,
+      name: `match-${matchId}-${Date.now()}`,
+      input: JSON.stringify({
+        matchId,
+        matchPk: `MATCH#${matchId}`,
+        matchSk: 'DETAILS',
+        matchTentativeEndTime: matchTentativeEndTimeIso,
+        tableName,
+      }),
+    })
+
+    const startResponse = await fastify.stepFunctions.send(startCommand)
+    if (startResponse && typeof startResponse === 'object' && 'executionArn' in startResponse) {
+      return (startResponse as { executionArn?: string }).executionArn
+    }
+  } catch (error) {
+    fastify.log.error({
+      error,
+      matchId,
+      stateMachineArn: fastify.config.MATCH_SETTLEMENT_STATE_MACHINE_ARN,
+    }, 'Failed to start settlement workflow execution')
+  }
+
+  return undefined
+}
+
 const stopSettlementExecution = async (
   fastify: FastifyInstance,
   executionArn: string,
@@ -345,61 +393,11 @@ export const handleMatchStart = async (
       matchStartDate.getTime() + MATCH_DURATION_MS
     ).toISOString();
 
-    if (
-      fastify.config.MATCH_SETTLEMENT_STATE_MACHINE_ARN &&
-      fastify.config.MATCH_SETTLEMENT_STATE_MACHINE_ARN.length > 0 &&
-      fastify.stepFunctions &&
-      fastify.stepFunctionsCommands?.StartExecutionCommand
-    ) {
-      try {
-        const tableName =
-          fastify.config.WAGE_TABLE_NAME ||
-          fastify.config.DYNAMODB_TABLE_NAME ||
-          'WageTable';
-
-        const startCommand =
-          new fastify.stepFunctionsCommands.StartExecutionCommand({
-            stateMachineArn:
-              fastify.config.MATCH_SETTLEMENT_STATE_MACHINE_ARN,
-            name: `match-${matchId}-${Date.now()}`,
-            input: JSON.stringify({
-              matchId,
-              matchPk: `MATCH#${matchId}`,
-              matchSk: 'DETAILS',
-              matchTentativeEndTime: matchTentativeEndTimeIso,
-              tableName,
-            }),
-          });
-
-        const startResponse = await fastify.stepFunctions.send(startCommand);
-        if (
-          startResponse &&
-          typeof startResponse === 'object' &&
-          'executionArn' in startResponse
-        ) {
-          settlementExecutionArn = (startResponse as {
-            executionArn?: string;
-          }).executionArn;
-        }
-      } catch (startError) {
-        fastify.log.error(
-          {
-            error: startError,
-            matchId,
-            stateMachineArn:
-              fastify.config.MATCH_SETTLEMENT_STATE_MACHINE_ARN,
-          },
-          'Failed to start settlement workflow execution'
-        );
-      }
-    } else {
-      fastify.log.debug(
-        {
-          matchId,
-        },
-        'Settlement workflow not configured; skipping Step Functions execution'
-      );
-    }
+    settlementExecutionArn = await startSettlementExecution(
+      fastify,
+      matchId,
+      matchTentativeEndTimeIso
+    )
 
     // Update player assets with initial prices and shares
     await initializeMatchAssetPricing(
@@ -485,9 +483,10 @@ export const handleMatchStart = async (
 
 export const handlePlayerForfeit = async (
   fastify: FastifyInstance,
-  matchId: string,
-  forfeitingPlayerId: string
+  userId: string,
+  payload: { matchId: string }
 ): Promise<DynamoDBMatchItem | undefined> => {
+  const matchId = payload.matchId;
   const match = await fastify.repositories.match.getMatch(matchId);
   if (!match) {
     throw new Error('Match not found when attempting to forfeit');
@@ -498,7 +497,7 @@ export const handlePlayerForfeit = async (
       {
         matchId,
         status: match.status,
-        forfeitingPlayerId,
+        forfeitingPlayerId: userId,
       },
       'Ignoring forfeit request - match is not in progress'
     );
@@ -509,13 +508,13 @@ export const handlePlayerForfeit = async (
     await stopSettlementExecution(
       fastify,
       match.matchSettlementExecutionArn,
-      `Player ${forfeitingPlayerId} forfeited match ${matchId}`
+      `Player ${userId} forfeited match ${matchId}`
     );
   }
 
   const winnerId =
-    match.players.find(playerId => playerId !== forfeitingPlayerId) ??
-    forfeitingPlayerId;
+    match.players.find(playerId => playerId !== userId) ??
+    userId;
 
   const matchEndedAtIso = new Date().toISOString();
 
@@ -525,7 +524,7 @@ export const handlePlayerForfeit = async (
         completionReason: 'forfeited',
         matchEndedAtIso,
         winnerId,
-        loserId: forfeitingPlayerId,
+        loserId: userId,
       });
 
     if (updatedMatch) {
@@ -534,7 +533,7 @@ export const handlePlayerForfeit = async (
         matchId: updatedMatch.matchId,
         completionReason: 'forfeited',
         winnerId,
-        forfeitingPlayerId,
+        forfeitingPlayerId: userId,
         matchEndedAt: updatedMatch.matchEndedAt,
       });
     }
@@ -548,7 +547,7 @@ export const handlePlayerForfeit = async (
       fastify.log.info(
         {
           matchId,
-          forfeitingPlayerId,
+          forfeitingPlayerId: userId,
         },
         'Forfeit ignored: match already completed'
       );
@@ -629,4 +628,57 @@ export const handleMatchEnd = async (
 
     throw error;
   }
+};
+
+export const handleSetMatchDuration = async (
+  fastify: FastifyInstance,
+  userId: string,
+  payload: { matchId: string; durationSeconds: number }
+): Promise<DynamoDBMatchItem> => {
+  if (payload.durationSeconds <= 0) {
+    throw new ValidationError('durationSeconds must be positive');
+  }
+
+  const matchData = await fastify.repositories.match.getMatch(payload.matchId);
+  const { match } = validateMatchAccess(matchData, userId);
+
+  if (match.status !== 'in_progress') {
+    throw new ValidationError('Match must be in progress to adjust duration');
+  }
+
+  const newTentativeEndTimeIso = new Date(
+    Date.now() + payload.durationSeconds * 1000
+  ).toISOString();
+
+  if (match.matchSettlementExecutionArn) {
+    await stopSettlementExecution(
+      fastify,
+      match.matchSettlementExecutionArn,
+      `Match duration updated by ${userId}`
+    );
+  }
+
+  const settlementExecutionArn = await startSettlementExecution(
+    fastify,
+    match.matchId,
+    newTentativeEndTimeIso
+  );
+
+  await fastify.repositories.match.updateMatchTentativeEndTime(match.matchId, {
+    matchTentativeEndTimeIso: newTentativeEndTimeIso,
+    ...(settlementExecutionArn ? { settlementExecutionArn } : {}),
+  });
+
+  const updatedMatch = await fastify.repositories.match.getMatch(match.matchId);
+  if (!updatedMatch) {
+    throw new Error('Failed to fetch match after updating duration');
+  }
+
+  await broadcastToMatch(fastify, updatedMatch.matchId, {
+    type: 'match_duration_updated',
+    matchId: updatedMatch.matchId,
+    matchTentativeEndTime: updatedMatch.matchTentativeEndTime,
+  });
+
+  return updatedMatch;
 };

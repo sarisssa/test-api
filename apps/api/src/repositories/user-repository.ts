@@ -383,19 +383,56 @@ export const createUserRepository = (fastify: FastifyInstance) => {
       if (!user) {
         throw new Error('User not found');
       }
+      const tableName = fastify.config.DYNAMODB_TABLE_NAME;
+      const variations: Array<{
+        pkAttr: string;
+        skAttr: string;
+        pkValue?: string;
+      }> = [
+        { pkAttr: 'PK', skAttr: 'SK', pkValue: user.PK },
+        { pkAttr: 'pk', skAttr: 'sk', pkValue: user.pk },
+      ];
 
-      const result = await dynamodb.send(
-        new QueryCommand({
-          TableName: fastify.config.DYNAMODB_TABLE_NAME,
-          KeyConditionExpression: 'pk = :pk AND begins_with(sk, :skPrefix)',
-          ExpressionAttributeValues: {
-            ':pk': user.pk,
-            ':skPrefix': 'MATCH#',
-          },
-        })
-      );
+      for (const variation of variations) {
+        const { pkAttr, skAttr, pkValue } = variation;
+        if (!pkValue) {
+          continue;
+        }
 
-      return (result.Items || []) as DynamoDBPlayerMatchItem[];
+        try {
+          const result = await dynamodb.send(
+            new QueryCommand({
+              TableName: tableName,
+              KeyConditionExpression: `#pk = :pk AND begins_with(#sk, :skPrefix)`,
+              ExpressionAttributeNames: {
+                '#pk': pkAttr,
+                '#sk': skAttr,
+              },
+              ExpressionAttributeValues: {
+                ':pk': pkValue,
+                ':skPrefix': 'MATCH#',
+              },
+            })
+          );
+
+          return (result.Items || []) as DynamoDBPlayerMatchItem[];
+        } catch (queryError) {
+          if (
+            !(queryError instanceof Error) ||
+            queryError.name !== 'ValidationException'
+          ) {
+            throw queryError;
+          }
+          logger.warn({
+            userId,
+            pkAttr,
+            message: queryError.message,
+            msg: 'Query using key casing failed, attempting alternative.',
+          });
+        }
+      }
+
+      throw new Error('Unable to query user matches with provided key schema');
     } catch (error) {
       logger.error({
         userId,

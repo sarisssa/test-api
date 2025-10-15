@@ -28,7 +28,13 @@ const ReadyCheckSchema = z.object({ matchId: z.string().min(1) })
 
 // Handlers wired to existing services
 import { joinMatchmakingWithSession } from '../services/matchmaking.js'
-import { handleAssetDeselection, handleAssetSelection, handleReadyCheck } from '../services/match.js'
+import {
+  handleAssetDeselection,
+  handleAssetSelection,
+  handlePlayerForfeit,
+  handleReadyCheck,
+  handleSetMatchDuration,
+} from '../services/match.js'
 
 const joinHandler: ActionHandler<typeof JoinSchema> = async ({ fastify, userId, connectionId }) => {
   const added = await joinMatchmakingWithSession(fastify, userId, connectionId)
@@ -51,18 +57,44 @@ const readyCheckHandler: ActionHandler<typeof ReadyCheckSchema> = async ({ fasti
 }
 
 // Scaffolds for upcoming actions
-const SetMatchDurationSchema = z.object({ matchId: z.string().min(1), durationSeconds: z.number().int().positive() })
+const SetMatchDurationSchema = z.object({
+  matchId: z.string().min(1),
+  durationSeconds: z.number().int().positive().max(3_600),
+})
 const SelectPerkSchema = z.object({ matchId: z.string().min(1), perkId: z.string().min(1) })
+const ForfeitMatchSchema = z.object({ matchId: z.string().min(1) })
 
 const notImplemented = (name: string): ActionHandler<z.ZodTypeAny> => async () => ({ ok: false, action: name, error: 'not_implemented' })
+
+const setMatchDurationHandler: ActionHandler<typeof SetMatchDurationSchema> = async (
+  { fastify, userId },
+  payload
+) => {
+  const updatedMatch = await handleSetMatchDuration(fastify, userId, payload)
+  return {
+    ok: true,
+    action: 'set_match_duration',
+    matchId: updatedMatch.matchId,
+    matchTentativeEndTime: updatedMatch.matchTentativeEndTime,
+  }
+}
+
+const forfeitMatchHandler: ActionHandler<typeof ForfeitMatchSchema> = async (
+  { fastify, userId },
+  payload
+) => {
+  await handlePlayerForfeit(fastify, userId, payload)
+  return { ok: true, action: 'forfeit_match', matchId: payload.matchId }
+}
 
 export const actions: Record<string, RegisteredAction> = {
   join_matchmaking: { schema: JoinSchema, handle: joinHandler },
   select_asset: { schema: SelectAssetSchema, handle: selectAssetHandler },
   deselect_asset: { schema: DeselectAssetSchema, handle: deselectAssetHandler },
   ready_check: { schema: ReadyCheckSchema, handle: readyCheckHandler },
-  set_match_duration: { schema: SetMatchDurationSchema, handle: notImplemented('set_match_duration') },
-  select_perk: { schema: SelectPerkSchema, handle: notImplemented('select_perk') }
+  set_match_duration: { schema: SetMatchDurationSchema, handle: setMatchDurationHandler },
+  select_perk: { schema: SelectPerkSchema, handle: notImplemented('select_perk') },
+  forfeit_match: { schema: ForfeitMatchSchema, handle: forfeitMatchHandler },
 }
 
 export const parseAndHandle = async (
@@ -92,4 +124,3 @@ export const parseAndHandle = async (
     return { ok: false, error: 'invalid_payload', action }
   }
 }
-
