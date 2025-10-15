@@ -18,6 +18,10 @@ export default fp(async function (fastify: FastifyInstance) {
           url: 'http://localhost:3000',
           description: 'Local development',
         },
+        {
+          url: 'https://dev-api.callimar.com',
+          description: 'Development environment',
+        },
       ],
       components: {
         securitySchemes: {
@@ -38,13 +42,11 @@ export default fp(async function (fastify: FastifyInstance) {
   });
 
   await fastify.register(swaggerUi, {
-    routePrefix: '/docs',
+    routePrefix: '/swagger',
     uiConfig: {
       docExpansion: 'list',
       deepLinking: true,
     },
     staticCSP: true,
   });
-
-  fastify.log.info('Swagger documentation available at /docs');
 });
