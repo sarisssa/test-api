@@ -8,7 +8,12 @@ import {
   ProjectionType,
   ScalarAttributeType,
 } from '@aws-sdk/client-dynamodb'
-import { DynamoDBDocumentClient, BatchWriteCommand } from '@aws-sdk/lib-dynamodb'
+import {
+  BatchWriteCommand,
+  DynamoDBDocumentClient,
+  GetCommand,
+  UpdateCommand,
+} from '@aws-sdk/lib-dynamodb'
 import {
   CreateStateMachineCommand,
   DescribeStateMachineCommand,
@@ -21,6 +26,7 @@ import type { Redis as RedisClient } from 'ioredis'
 import WebSocket from 'ws'
 import { createRedisClient } from '../utils/redis.js'
 import { buildMatchSettlementDefinition } from '../step-functions/definition.js'
+import type { DynamoDBMatchItem } from '../models/match.js'
 
 type PlayerAuth = {
   label: string
@@ -180,6 +186,95 @@ const stepFunctionsClient = shouldInitialiseStepFunctionsClient
       ...(STEP_FUNCTIONS_ENDPOINT ? { endpoint: STEP_FUNCTIONS_ENDPOINT } : {}),
     })
   : null
+
+const MATCH_COMPLETION_POLL_INTERVAL_MS = 1_000
+
+const matchKey = (matchId: string) => ({ PK: `MATCH#${matchId}`, SK: 'DETAILS' })
+
+const fetchMatchRecord = async (matchId: string): Promise<DynamoDBMatchItem | undefined> => {
+  const result = await documentClient.send(
+    new GetCommand({
+      TableName: DYNAMODB_TABLE,
+      Key: matchKey(matchId),
+    })
+  )
+
+  return result.Item as DynamoDBMatchItem | undefined
+}
+
+const awaitMatchCompletion = async (
+  matchId: string,
+  timeoutMs = 45_000
+): Promise<DynamoDBMatchItem> => {
+  const deadline = Date.now() + timeoutMs
+
+  while (Date.now() < deadline) {
+    const match = await fetchMatchRecord(matchId)
+    if (match && match.status === 'completed') {
+      return match
+    }
+    await new Promise(resolve => setTimeout(resolve, MATCH_COMPLETION_POLL_INTERVAL_MS))
+  }
+
+  throw new Error(`Timed out waiting for match ${matchId} to complete`)
+}
+
+const updateMatchPlayerAssets = async (
+  matchId: string,
+  multipliers: Record<string, number>
+): Promise<void> => {
+  const match = await fetchMatchRecord(matchId)
+  if (!match) {
+    throw new Error(`Match ${matchId} not found when updating asset prices`)
+  }
+
+  const updatedPlayerAssets = structuredClone(match.playerAssets)
+  const nowIso = new Date().toISOString()
+
+  Object.entries(updatedPlayerAssets ?? {}).forEach(([playerId, entry]) => {
+    const multiplier = multipliers[playerId] ?? 1
+    updatedPlayerAssets[playerId] = {
+      ...entry,
+      assets: entry.assets.map(asset => {
+        const basePrice = asset.initialPrice ?? 0
+        const currentPrice = basePrice > 0 ? basePrice * multiplier : multiplier * 100
+        return {
+          ...asset,
+          currentPrice,
+          lastUpdatedAt: nowIso,
+        }
+      }),
+    }
+  })
+
+  await documentClient.send(
+    new UpdateCommand({
+      TableName: DYNAMODB_TABLE,
+      Key: matchKey(matchId),
+      UpdateExpression: 'SET playerAssets = :playerAssets',
+      ExpressionAttributeValues: {
+        ':playerAssets': updatedPlayerAssets,
+      },
+    })
+  )
+}
+
+const calculatePortfolioTotals = (
+  match: DynamoDBMatchItem,
+  playerIds: string[]
+): Record<string, number> => {
+  return playerIds.reduce<Record<string, number>>((acc, playerId) => {
+    const assets = match.playerAssets?.[playerId]?.assets ?? []
+    const total = assets.reduce((sum, asset) => {
+      const shares = asset.shares ?? 0
+      const price = asset.currentPrice ?? asset.initialPrice ?? 0
+      return sum + shares * price
+    }, 0)
+
+    acc[playerId] = total
+    return acc
+  }, {})
+}
 
 class MatchGatewayClient {
   private ws: WebSocket | null = null
@@ -411,36 +506,40 @@ async function ensureStepFunctionsStateMachine(): Promise<void> {
       new DescribeStateMachineCommand({ stateMachineArn: STEP_FUNCTIONS_ARN })
     )) as { stateMachineArn?: string; name?: string }
 
-    await stepFunctionsClient.send(
-      new UpdateStateMachineCommand({
-        stateMachineArn: STEP_FUNCTIONS_ARN,
-        definition,
-        roleArn,
-      })
-    )
+    if (describe?.stateMachineArn) {
+      await stepFunctionsClient.send(
+        new UpdateStateMachineCommand({
+          stateMachineArn: describe.stateMachineArn,
+          definition,
+          roleArn,
+        })
+      )
 
-    console.log(
-      `✅ Step Functions state machine verified: ${describe.name ?? stateMachineName}`
-    )
-    return
+      console.log(
+        `✅ Step Functions state machine verified: ${describe.name ?? stateMachineName}`
+      )
+      return
+    }
   }
 
   try {
     const existing = (await stepFunctionsClient.send(
       new DescribeStateMachineCommand({ name: stateMachineName })
     )) as { stateMachineArn?: string; name?: string }
-    process.env.MATCH_SETTLEMENT_STATE_MACHINE_ARN = existing.stateMachineArn ?? ''
-    console.log(
-      `✅ Found existing state machine '${stateMachineName}'.
+    if (existing?.stateMachineArn) {
+      process.env.MATCH_SETTLEMENT_STATE_MACHINE_ARN = existing.stateMachineArn
+      console.log(
+        `✅ Found existing state machine '${stateMachineName}'.
    ARN: ${existing.stateMachineArn}
    (Set MATCH_SETTLEMENT_STATE_MACHINE_ARN to this value before starting the API to enable settlement automation.)`
-    )
-    return
-  } catch (error) {
-    if (!(error instanceof Error) || !('name' in error) || error.name !== 'StateMachineDoesNotExist') {
-      console.error('❌ Failed to describe Step Functions state machine by name.', error)
+      )
       return
     }
+  } catch (error) {
+    console.warn(
+      'ℹ️  Unable to describe Step Functions by name (will attempt to create new machine).',
+      error instanceof Error ? { name: error.name, message: error.message } : error
+    )
   }
 
   const created = (await stepFunctionsClient.send(
@@ -607,11 +706,6 @@ async function runLobbyTests(players: PlayerAuth[]) {
     }
     console.log(`   ✅ Match found (matchId=${matchId})`)
 
-    // Exercise unimplemented actions to ensure they return explicit errors
-    clientA.send('set_match_duration', { matchId, durationSeconds: 120 })
-    await clientA.waitForLabel('set_match_duration', 5_000, { expectOk: false })
-    console.log('   ✅ set_match_duration currently returns not_implemented (expected)')
-
     clientA.send('select_perk', { matchId, perkId: 'perk-double-down' })
     await clientA.waitForLabel('select_perk', 5_000, { expectOk: false })
     console.log('   ✅ select_perk currently returns not_implemented (expected)')
@@ -696,9 +790,34 @@ async function runLobbyTests(players: PlayerAuth[]) {
     ])
     console.log('   ✅ Match transitioned to in_progress')
 
+    clientA.send('set_match_duration', { matchId, durationSeconds: 15 })
+    await clientA.waitForLabel('set_match_duration', 10_000, { expectOk: true })
+    await Promise.race([
+      clientA.waitForLabel('match_duration_updated', 10_000),
+      clientB.waitForLabel('match_duration_updated', 10_000),
+    ])
+    console.log('   ✅ Match duration shortened to 15 seconds')
+
+    await updateMatchPlayerAssets(matchId, {
+      [playerA.userId]: 1.5,
+      [playerB.userId]: 0.85,
+    })
+
+    const completedMatch = await awaitMatchCompletion(matchId)
+    const totals = calculatePortfolioTotals(completedMatch, [playerA.userId, playerB.userId])
+    if (totals[playerA.userId] <= totals[playerB.userId]) {
+      throw new Error('Player A total portfolio value did not exceed Player B after boost')
+    }
+    console.log(
+      `   ✅ Match completed via time expiry. Totals — Player A: ${totals[playerA.userId].toFixed(
+        2
+      )}, Player B: ${totals[playerB.userId].toFixed(2)}`
+    )
+
     return {
       matchId,
       matchStartedAt: matchStarted.matchStartedAt as string | undefined,
+      completedMatch,
     }
   } finally {
     clientA.dumpDebugLogs('lobby')
@@ -708,23 +827,81 @@ async function runLobbyTests(players: PlayerAuth[]) {
   }
 }
 
-async function waitForSettlement(players: PlayerAuth[], waitMs = 35_000) {
-  console.log('\n⏳ Waiting for settlement...')
-  await new Promise(resolve => setTimeout(resolve, waitMs))
+async function runForfeitScenario(players: PlayerAuth[]): Promise<void> {
+  console.log('\n🧪 Running forfeit scenario...')
 
   const [playerA, playerB] = players
+  const clientA = new MatchGatewayClient(`${playerA.label} (forfeit)`, playerA.userId, playerA.token)
+  const clientB = new MatchGatewayClient(`${playerB.label} (forfeit)`, playerB.userId, playerB.token)
 
-  const playerMatchesA = await getJson<{ matches: { matchId: string; result?: string }[] }>(
-    `${API_BASE_URL}/user/matches`,
-    playerA.token
-  )
-  const playerMatchesB = await getJson<{ matches: { matchId: string; result?: string }[] }>(
-    `${API_BASE_URL}/user/matches`,
-    playerB.token
-  )
+  await Promise.all([clientA.connect(), clientB.connect()])
 
-  console.log(`   ✅ Retrieved match history for ${playerA.label} and ${playerB.label}`)
-  return { playerMatchesA, playerMatchesB }
+  try {
+    clientA.send('join_matchmaking', {})
+    clientB.send('join_matchmaking', {})
+
+    await Promise.all([
+      clientA.waitForLabel('join_matchmaking', 10_000, { expectOk: true }),
+      clientB.waitForLabel('join_matchmaking', 10_000, { expectOk: true }),
+    ])
+
+    const matchFound = await Promise.race([
+      clientA.waitForLabel('match_found', 15_000),
+      clientB.waitForLabel('match_found', 15_000),
+    ])
+    const matchId = matchFound.matchId as string
+    if (!matchId) {
+      throw new Error('Forfeit scenario failed: matchId missing from match_found event')
+    }
+
+    const playerAAssets = ['NVDA', 'MSFT', 'AMZN']
+    const playerBAssets = ['TSLA', 'AAPL', 'META']
+
+    for (const ticker of playerAAssets) {
+      clientA.send('select_asset', { matchId, ticker })
+      await clientA.waitForLabel('select_asset', 10_000, { expectOk: true })
+    }
+
+    for (const ticker of playerBAssets) {
+      clientB.send('select_asset', { matchId, ticker })
+      await clientB.waitForLabel('select_asset', 10_000, { expectOk: true })
+    }
+
+    clientA.send('ready_check', { matchId })
+    clientB.send('ready_check', { matchId })
+
+    await Promise.race([
+      clientA.waitForLabel('match_started', 20_000),
+      clientB.waitForLabel('match_started', 20_000),
+    ])
+
+    clientB.send('forfeit_match', { matchId })
+    await clientB.waitForLabel('forfeit_match', 10_000, { expectOk: true })
+
+    await Promise.race([
+      clientA.waitForLabel('match_completed', 10_000),
+      clientB.waitForLabel('match_completed', 10_000),
+    ])
+
+    const completedMatch = await awaitMatchCompletion(matchId, 10_000)
+    if (completedMatch.completionReason !== 'forfeited') {
+      throw new Error(
+        `Expected completionReason 'forfeited', received '${completedMatch.completionReason}'`
+      )
+    }
+    if (completedMatch.winner !== playerA.userId) {
+      throw new Error(
+        `Expected Player A (${playerA.userId}) to win forfeited match, but winner was '${completedMatch.winner}'`
+      )
+    }
+
+    console.log('   ✅ Forfeit scenario completed with Player A declared winner')
+  } finally {
+    clientA.dumpDebugLogs('forfeit')
+    clientB.dumpDebugLogs('forfeit')
+    clientA.disconnect()
+    clientB.disconnect()
+  }
 }
 
 async function main() {
@@ -749,12 +926,7 @@ async function main() {
 
   const lobbyResult = await runLobbyTests(players)
 
-  if (process.env.MATCH_SETTLEMENT_STATE_MACHINE_ARN) {
-    await waitForSettlement(players)
-    console.log('   ✅ Settlement validation complete')
-  } else {
-    console.log('⚠️  Settlement validation skipped (no Step Functions ARN configured)')
-  }
+  await runForfeitScenario(players)
 
   redis.disconnect()
   stepFunctionsClient?.destroy()
