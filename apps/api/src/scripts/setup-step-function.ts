@@ -37,30 +37,28 @@ async function ensureStateMachine(): Promise<void> {
       })
     )) as { stateMachineArn?: string; name?: string }
 
-    await client.send(
-      new UpdateStateMachineCommand({
-        stateMachineArn: describe.stateMachineArn,
-        definition,
-        roleArn: STATE_MACHINE_ROLE_ARN,
-      })
-    )
+    if (describe?.stateMachineArn) {
+      await client.send(
+        new UpdateStateMachineCommand({
+          stateMachineArn: describe.stateMachineArn,
+          definition,
+          roleArn: STATE_MACHINE_ROLE_ARN,
+        })
+      )
 
-    console.log(
-      `✅ Step Functions state machine '${STATE_MACHINE_NAME}' updated.\n   ARN: ${describe.stateMachineArn}`
-    )
-    console.log(
-      '   Ensure MATCH_SETTLEMENT_STATE_MACHINE_ARN is set to this ARN before running the API.'
-    )
-    return
-  } catch (error) {
-    if (
-      !(error instanceof Error) ||
-      !('name' in error) ||
-      error.name !== 'StateMachineDoesNotExist'
-    ) {
-      console.error('❌ Failed to describe Step Functions state machine.', error)
-      process.exit(1)
+      console.log(
+        `✅ Step Functions state machine '${STATE_MACHINE_NAME}' updated.\n   ARN: ${describe.stateMachineArn}`
+      )
+      console.log(
+        '   Ensure MATCH_SETTLEMENT_STATE_MACHINE_ARN is set to this ARN before running the API.'
+      )
+      return
     }
+  } catch (error) {
+    console.warn(
+      'ℹ️  Step Functions describe failed (will attempt to create new machine).',
+      error instanceof Error ? { name: error.name, message: error.message } : error
+    )
   }
 
   const create = (await client.send(
