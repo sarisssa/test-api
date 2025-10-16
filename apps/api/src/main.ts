@@ -24,6 +24,7 @@ import researchWebSocketRoutes from './routes/research-websocket.js';
 import userRoutes from './routes/user.js';
 import metricsRoutes from './routes/metrics.js';
 import { startMatchmakingWorker } from './services/matchmaking-worker.js';
+import { startSettlementWorker } from './services/settlement-worker.js';
 import { initMatchmaking } from './services/matchmaking.js';
 import { initializePhoneHashSalt } from './utils/phone-utils.js';
 import { buildFastifyRedisOptions } from './utils/redis.js';
@@ -83,6 +84,7 @@ async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(fastifyWebsocket);
   await startMatchmakingWorker(fastify);
   await initMatchmaking(fastify);
+  await startSettlementWorker(fastify);
 
   await fastify.register(healthRoutes);
   await fastify.register(matchGatewayRoutes, { prefix: '/match-gateway' });
