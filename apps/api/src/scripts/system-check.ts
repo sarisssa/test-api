@@ -12,6 +12,7 @@ import {
   BatchWriteCommand,
   DynamoDBDocumentClient,
   GetCommand,
+  ScanCommand,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb'
 import {
@@ -218,6 +219,36 @@ const awaitMatchCompletion = async (
   }
 
   throw new Error(`Timed out waiting for match ${matchId} to complete`)
+}
+
+const scanMatchesForUser = async (userId: string): Promise<DynamoDBMatchItem[]> => {
+  const { Items: matches } = await documentClient.send(
+    new ScanCommand({
+      TableName: DYNAMODB_TABLE,
+      FilterExpression: 'contains(#players, :uid)',
+      ExpressionAttributeNames: { '#players': 'players' },
+      ExpressionAttributeValues: { ':uid': userId }
+    })
+  )
+  return (matches ?? []) as DynamoDBMatchItem[]
+}
+
+const printMatchesForPlayers = async (label: string, players: PlayerAuth[]) => {
+  const [a, b] = players
+  const [ma, mb] = await Promise.all([
+    scanMatchesForUser(a.userId),
+    scanMatchesForUser(b.userId)
+  ])
+  const fmt = (m: DynamoDBMatchItem) => ({
+    matchId: m.matchId,
+    players: m.players,
+    status: m.status,
+    reason: m.completionReason,
+    winner: m.winner
+  })
+  console.log(`\n🔎 Matches for ${label}:`)
+  console.log(`   ${a.label} (${a.userId}):`, JSON.stringify(ma.map(fmt)))
+  console.log(`   ${b.label} (${b.userId}):`, JSON.stringify(mb.map(fmt)))
 }
 
 // Simple NYSE market-hours check (ET): Mon–Fri 9:30–16:00
@@ -1043,6 +1074,14 @@ async function main() {
 
   await runAssetTests(playersAB[0].token)
 
+  // Optional lobby smoke (runs the full asset selection flows once)
+  try {
+    const lobby = await runLobbyTests(playersAB)
+    console.log(`\n🧪 Lobby smoke completed (matchId=${lobby.matchId})`)
+  } catch (e) {
+    console.warn('⚠️  Lobby smoke failed (continuing):', e)
+  }
+
   // First match (A/B): forfeit
   // Second match (C/D): timed with distinct assets to exercise concurrency
   const [forfeitResult, timedMatch] = await Promise.all([
@@ -1052,6 +1091,10 @@ async function main() {
       b: ['MU', 'COP', 'CMCSA']
     })
   ])
+
+  // Print current matches for both pairs
+  await printMatchesForPlayers('Players A/B', playersAB)
+  await printMatchesForPlayers('Players C/D', playersCD)
 
   // Log outcomes and percentage returns
   if (timedMatch.completedMatch) {
@@ -1067,6 +1110,12 @@ async function main() {
     console.log(`   Totals: ${JSON.stringify(totals)}`)
     console.log(`   Returns (%): ${JSON.stringify(returns)}`)
     console.log(`   Winner: ${timedMatch.completedMatch.winner}`)
+    if (!ids.includes(timedMatch.completedMatch.winner ?? '')) {
+      console.warn('⚠️  Winner of timed match is not among C/D players. Match players:', JSON.stringify(timedMatch.completedMatch.players))
+    }
+    if ((timedMatch.completedMatch.completionReason ?? '') !== 'time_expired') {
+      console.warn(`⚠️  Timed match completionReason was '${timedMatch.completedMatch.completionReason}', expected 'time_expired'`)
+    }
   }
 
   if (forfeitResult?.completedMatch) {
@@ -1082,6 +1131,12 @@ async function main() {
     console.log(`   Totals: ${JSON.stringify(totals)}`)
     console.log(`   Returns (%): ${JSON.stringify(returns)}`)
     console.log(`   Winner: ${forfeitResult.completedMatch.winner}`)
+    if (!ids.includes(forfeitResult.completedMatch.winner ?? '')) {
+      console.warn('⚠️  Winner of forfeit match is not among A/B players. Match players:', JSON.stringify(forfeitResult.completedMatch.players))
+    }
+    if ((forfeitResult.completedMatch.completionReason ?? '') !== 'forfeited') {
+      console.warn(`⚠️  Forfeit match completionReason was '${forfeitResult.completedMatch.completionReason}', expected 'forfeited'`)
+    }
   }
 
   redis.disconnect()
