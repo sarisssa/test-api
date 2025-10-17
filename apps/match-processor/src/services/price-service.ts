@@ -37,13 +37,33 @@ export interface PriceFetchSummary {
 
 let lastRequestTime = 0
 
-const shouldUseStub = () => {
+const isPlaceholderKey = (value: string | undefined): boolean => {
+  if (!value) {
+    return true
+  }
+  const normalised = value.trim().toLowerCase()
+  return (
+    normalised === '' ||
+    normalised === 'dummy' ||
+    normalised === 'replace-with-real-key'
+  )
+}
+
+const shouldUseStub = (): boolean => {
   if (USE_PRICE_SERVICE_STUB) {
+    log('warn', 'Price service stub enabled explicitly via USE_PRICE_SERVICE_STUB=true')
     return true
   }
-  if (!TWELVE_DATA_API_KEY || TWELVE_DATA_API_KEY === 'dummy') {
+
+  if (isPlaceholderKey(TWELVE_DATA_API_KEY)) {
+    const msg = 'TWELVE_DATA_API_KEY missing or placeholder; using stubbed pricing'
+    if ((process.env.NODE_ENV ?? '').toLowerCase() === 'production') {
+      throw new Error(`${msg} in production environment`)
+    }
+    log('warn', msg)
     return true
   }
+
   return false
 }
 

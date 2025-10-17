@@ -198,3 +198,27 @@ export const recordPriceRunMetrics = async (metrics: PriceRunMetrics): Promise<v
     console.error('Failed to persist price run metrics:', error)
   }
 }
+
+export const updateMatchPlayerAssetPrices = async (
+  matchId: string,
+  playerAssets: Match['playerAssets']
+): Promise<void> => {
+  try {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: WAGE_TABLE_NAME,
+        Key: {
+          PK: `MATCH#${matchId}`,
+        SK: 'DETAILS'
+        },
+        UpdateExpression: 'SET playerAssets = :playerAssets',
+        ExpressionAttributeValues: {
+          ':playerAssets': playerAssets
+        }
+      })
+    )
+    console.log(`Updated player asset prices for match ${matchId}`)
+  } catch (error) {
+    console.error(`Failed to update player assets for match ${matchId}:`, error)
+  }
+}

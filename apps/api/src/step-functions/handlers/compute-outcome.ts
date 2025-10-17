@@ -75,6 +75,7 @@ async function fetchMatch(tableName: string, pk: string, sk: string): Promise<Ma
         PK: { S: pk },
         SK: { S: sk },
       },
+      ConsistentRead: true,
     })
   )
 
@@ -101,6 +102,7 @@ async function fetchAssetPrice(tableName: string, ticker: string): Promise<numbe
             PK: { S: `ASSET#${assetType}` },
             SK: { S: ticker },
           },
+          ConsistentRead: true,
         })
       )
 

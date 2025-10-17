@@ -1,7 +1,8 @@
 import {
   batchUpdateAssetPrices,
   getActiveMatches,
-  recordPriceRunMetrics
+  recordPriceRunMetrics,
+  updateMatchPlayerAssetPrices
 } from './services/dynamo-service.js'
 import { fetchCurrentPrices } from './services/price-service.js'
 import { getActiveTickersWithTypesForCurrentMarket } from './utils/match-processor.js'
@@ -77,6 +78,52 @@ export const processMatchesOnce = async (): Promise<ProcessorResult> => {
     .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
 
   await batchUpdateAssetPrices(priceUpdates)
+
+  const priceLookup = new Map<string, number>()
+  priceUpdates.forEach(update => {
+    if (!Number.isNaN(update.currentPrice)) {
+      priceLookup.set(update.symbol, update.currentPrice)
+    }
+  })
+
+  const matchUpdatePromises = matches
+    .map(match => {
+      const selections = match.playerAssets ?? {}
+      let touched = false
+      const updatedSelections: typeof selections = {}
+
+      for (const [userId, selection] of Object.entries(selections)) {
+        const updatedAssets = selection.assets.map(asset => {
+          const updatedPrice = priceLookup.get(asset.ticker)
+          if (updatedPrice === undefined) {
+            return asset
+          }
+          touched = true
+          return {
+            ...asset,
+            currentPrice: updatedPrice,
+            lastUpdatedAt: priceSummary.fetchedAt
+          }
+        })
+
+        updatedSelections[userId] = {
+          ...selection,
+          assets: updatedAssets
+        }
+      }
+
+      if (!touched) {
+        return null
+      }
+
+      match.playerAssets = updatedSelections
+      return updateMatchPlayerAssetPrices(match.matchId, updatedSelections)
+    })
+    .filter((promise): promise is Promise<void> => Boolean(promise))
+
+  if (matchUpdatePromises.length > 0) {
+    await Promise.all(matchUpdatePromises)
+  }
 
   try {
     await recordPriceRunMetrics({

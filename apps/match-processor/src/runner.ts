@@ -3,7 +3,7 @@ import 'dotenv/config'
 import { sleep } from 'wage-shared'
 import { processMatchesOnce } from './processor.js'
 
-const DEFAULT_INTERVAL_SECONDS = 30
+const DEFAULT_INTERVAL_SECONDS = 10
 
 const resolveInterval = () => {
   const raw = process.env.MATCH_PROCESSOR_INTERVAL_SECONDS
