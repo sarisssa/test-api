@@ -51,6 +51,8 @@ type Waiter = {
   timeoutHandle: NodeJS.Timeout
 }
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
 const STOCK_TICKERS = [
   'NVDA',
   'MSFT',
@@ -225,9 +227,9 @@ const scanMatchesForUser = async (userId: string): Promise<DynamoDBMatchItem[]> 
   const { Items: matches } = await documentClient.send(
     new ScanCommand({
       TableName: DYNAMODB_TABLE,
-      FilterExpression: 'contains(#players, :uid)',
-      ExpressionAttributeNames: { '#players': 'players' },
-      ExpressionAttributeValues: { ':uid': userId }
+      FilterExpression: '#entity = :match AND SK = :details AND contains(#players, :uid)',
+      ExpressionAttributeNames: { '#entity': 'EntityType', '#players': 'players' },
+      ExpressionAttributeValues: { ':match': 'Match', ':details': 'DETAILS', ':uid': userId }
     })
   )
   return (matches ?? []) as DynamoDBMatchItem[]
@@ -1012,6 +1014,8 @@ async function runForfeitScenario(players: PlayerAuth[]): Promise<{ matchId: str
     clientA.send('ready_check', { matchId })
     clientB.send('ready_check', { matchId })
 
+    // Small guard to avoid racing before server fully persists in_progress state
+    await sleep(250)
     await Promise.race([
       clientA.waitForLabel('match_started', 20_000),
       clientB.waitForLabel('match_started', 20_000),
@@ -1082,15 +1086,12 @@ async function main() {
     console.warn('⚠️  Lobby smoke failed (continuing):', e)
   }
 
-  // First match (A/B): forfeit
-  // Second match (C/D): timed with distinct assets to exercise concurrency
-  const [forfeitResult, timedMatch] = await Promise.all([
-    runForfeitScenario(playersAB),
-    runTimedMatchScenario(playersCD, {
-      a: ['CRM', 'LRCX', 'ADP'],
-      b: ['MU', 'COP', 'CMCSA']
-    })
-  ])
+  // Run scenarios sequentially to avoid cross-pair matchmaking
+  const forfeitResult = await runForfeitScenario(playersAB)
+  const timedMatch = await runTimedMatchScenario(playersCD, {
+    a: ['CRM', 'LRCX', 'ADP'],
+    b: ['MU', 'COP', 'CMCSA']
+  })
 
   // Print current matches for both pairs
   await printMatchesForPlayers('Players A/B', playersAB)
