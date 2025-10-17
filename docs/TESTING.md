@@ -13,6 +13,7 @@ This guide explains how to exercise and verify the Wage backend (Fastify API + m
   - Twelve Data API key (set `TWELVE_DATA_API_KEY` or mock responses).
 - Optional (recommended for settlement tests): configure AWS Step Functions on LocalStack. See the next section for a streamlined deploy that also updates your env files.
 - For WebSocket/manual flows, the API service must be running (`npm run dev:api` or deployed Fargate task).
+- Match processor pulls live prices every 10 seconds. Outside stock hours you can set `MATCH_PROCESSOR_FORCE_MARKET_OPEN=true` (or `MATCH_PROCESSOR_FORCE_MARKET_CLOSED=true`) in `apps/match-processor/.env` to make the processor run deterministically.
 
 Environment variables live under `base/apps/api/.env` and `base/apps/match-processor/.env`. Create `.env.local` copies whenever you need to override defaults.
 
@@ -49,7 +50,12 @@ npm run setup:step-functions -w api
 
 Copy the printed ARN into `MATCH_SETTLEMENT_STATE_MACHINE_ARN` in `apps/api/.env` if it differs, then restart the API.
 
-3) Verify base env for local dev
+3) Seed DynamoDB and price rows
+
+- Run `npm run setup:system -w api`. This is idempotent: it creates the Wage table if needed, ensures the state machine exists, and seeds price rows for stock, crypto, and commodity tickers so the match processor can run 24/7.
+- Optional follow-up: `npm run create-table -w api` if you need to re-create the table manually.
+
+4) Verify base env for local dev
 
 - `STEP_FUNCTIONS_ENDPOINT=http://localhost:4566` (or `http://localstack-main.orb.local:4566`)
 - `DYNAMODB_URL=http://localhost:4566` (or same custom host)
@@ -68,11 +74,15 @@ Notes
   - `npm run -w api deploy:lambdas`
 - Create/update Step Functions state machine (reads env ARNs):
   - `npm run setup:step-functions -w api`
+- Provision table + state machine + seed price rows:
+  - `npm run setup:system -w api`
 - Start services:
   - API: `npm run dev:api`
   - Match processor: `npm run dev:match-processor`
 - Run end‑to‑end system check:
   - `npm run system:test -w api`
+- Inspect a match record quickly:
+  - `npx tsx src/scripts/debug-match.ts <matchId>`
 
 Verification (LocalStack CLI):
 - List Lambdas: `aws lambda list-functions --region us-east-1 --endpoint-url http://localhost:4566`
@@ -107,16 +117,16 @@ You can skip steps 3 and 4, assuming you have steps 1 and 2 set-up, just run ste
    Point both services to `redis://127.0.0.1:6379`.
 
 2. **DynamoDB / LocalStack**  
-   - Option A (LocalStack): ensure LocalStack is running at `http://localhost:4566` and set `DYNAMODB_URL=http://localhost:4566`, then run `npm run create-table -w api`.
+   - Option A (LocalStack): ensure LocalStack is running at `http://localhost:4566` and set `DYNAMODB_URL=http://localhost:4566`. Run `npm run setup:system -w api` to create the table, refresh the Step Functions definition, and seed price rows.
    - Option B (DynamoDB Local):
      ```bash
      docker run --name wage-dynamodb -p 8000:8000 -d amazon/dynamodb-local
      ```
-     Export `DYNAMODB_URL=http://127.0.0.1:8000` and run `npm run create-table -w api`.
+     Export `DYNAMODB_URL=http://127.0.0.1:8000`, run `npm run create-table -w api`, then `npm run setup:system -w api` to seed price rows.
 
-3. **Seed data**  
+3. **Seed data (optional extras)**  
    ```bash
-   npm run seed-db -w api
+   npm run seed-db -w api        # large asset metadata set, already covered by setup:system
    npm run seed-users -w api    # optional, see seed scripts
    ```
 
@@ -127,9 +137,8 @@ You can skip steps 3 and 4, assuming you have steps 1 and 2 set-up, just run ste
    npm run system:test -w api
    ```  
    Runs the orchestration script that prepares DynamoDB, seeds assets/players, drives WebSocket matchmaking, and validates settlements. It runs two matches concurrently:
-   - A/B: forfeit scenario
-   - C/D: 30s timed match with distinct assets; off‑hours, the script simulates price moves so percent‑based winner is deterministic.
-   During market hours, simulated price moves are skipped; completion still occurs via Step Functions, and the script logs observed totals.
+   - A/B: forfeit scenario (outcome depends on live prices; the script logs the winner without enforcing Player A victory).
+   - C/D: 30s timed match with distinct crypto assets. Live prices from the match processor update the players' portfolios, so expect small real-world gains or losses. Set `MATCH_PROCESSOR_FORCE_MARKET_OPEN=true` when equities are closed to keep the loop running locally.
 
 Future work: add a `docker-compose.test.yml` that boots Redis + DynamoDB Local and exposes them through `npm run test:integration`.
 
@@ -165,6 +174,7 @@ These scenarios mirror the connection-lifecycle and broadcast guarantees called 
 ### D. Win Condition (Percent‑Based)
 - Budget is fixed at `$100,000` per player; shares are sized from that budget at match start.
 - Winner is the player with the higher percentage return; since budgets match, comparing final portfolio totals is equivalent to comparing returns.
+- The match processor writes refreshed `currentPrice` fields back into each match via `playerAssets`, and the settlement Lambda reads items with `ConsistentRead=true`, so the compute-outcome recheck in the system script now aligns with stored winners even immediately after forfeits.
 
 ### E. Concurrency & Connections
 - System check opens four WebSocket connections (A/B/C/D) and runs two matches concurrently.
@@ -233,6 +243,7 @@ Each suite should run via `npm run test:<name>` and be wired into CI (see `docs/
   - Create it: `npm run create-table -w api` (with `DYNAMODB_URL=http://localhost:4566`).
 - Price remains `$0` after seeding:
   - First run will fetch and cache non‑zero prices; verify match‑processor logs show price updates, or set `USE_PRICE_SERVICE_STUB=true` for entirely local runs.
+  - Ensure `TWELVE_DATA_API_KEY` is not a placeholder (e.g., `dummy` or `replace-with-real-key`); the service falls back to the stub when the key is missing.
 
 ### Match IDs in Logs
 - System check prints both match IDs on completion:
