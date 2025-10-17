@@ -28,6 +28,7 @@ import WebSocket from 'ws'
 import { createRedisClient } from '../utils/redis.js'
 import { INITIAL_PORTFOLIO_VALUE } from '../constants.js'
 import { buildMatchSettlementDefinition } from '../step-functions/definition.js'
+import { handler as computeOutcomeHandler } from '../step-functions/handlers/compute-outcome.js'
 import type { DynamoDBMatchItem } from '../models/match.js'
 
 type PlayerAuth = {
@@ -1052,6 +1053,22 @@ async function runForfeitScenario(players: PlayerAuth[]): Promise<{ matchId: str
   }
 }
 
+async function verifyComputeOutcome(match: DynamoDBMatchItem, label: string): Promise<void> {
+  console.log(`\n🧮 Verifying compute-outcome handler for ${label} match (${match.matchId})...`)
+  const outcome = await computeOutcomeHandler({
+    matchId: match.matchId,
+    tableName: DYNAMODB_TABLE,
+    matchPk: matchKey(match.matchId).PK,
+    matchSk: matchKey(match.matchId).SK,
+  })
+  console.log(`   Handler result: ${JSON.stringify(outcome)}`)
+  if (match.winner && match.winner !== outcome.winnerId) {
+    console.warn(
+      `⚠️  Winner mismatch. Stored=${match.winner}, handler=${outcome.winnerId}`
+    )
+  }
+}
+
 async function main() {
   console.log('🚀 Wage system orchestration script starting...')
   console.log(`   DynamoDB endpoint: ${DYNAMODB_ENDPOINT}`)
@@ -1099,6 +1116,7 @@ async function main() {
 
   // Log outcomes and percentage returns
   if (timedMatch.completedMatch) {
+    await verifyComputeOutcome(timedMatch.completedMatch, 'timed')
     const ids = [playersCD[0].userId, playersCD[1].userId]
     const totals = calculatePortfolioTotals(timedMatch.completedMatch, ids)
     const returns = Object.fromEntries(
@@ -1120,6 +1138,7 @@ async function main() {
   }
 
   if (forfeitResult?.completedMatch) {
+    await verifyComputeOutcome(forfeitResult.completedMatch, 'forfeit')
     const ids = [playersAB[0].userId, playersAB[1].userId]
     const totals = calculatePortfolioTotals(forfeitResult.completedMatch, ids)
     const returns = Object.fromEntries(
