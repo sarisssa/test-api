@@ -11,10 +11,73 @@ This guide explains how to exercise and verify the Wage backend (Fastify API + m
   - Redis (local install, Docker, or Elasticache endpoint).
   - DynamoDB (AWS table or LocalStack/DynamoDB Local).
   - Twelve Data API key (set `TWELVE_DATA_API_KEY` or mock responses).
-- Optional (recommended for settlement tests): configure AWS Step Functions. For LocalStack set `STEP_FUNCTIONS_ENDPOINT=http://localhost:4566`, then run `npm run setup:step-functions -w api` to create or update the match-settlement workflow. Copy the printed ARN into `MATCH_SETTLEMENT_STATE_MACHINE_ARN` before starting the API.
+- Optional (recommended for settlement tests): configure AWS Step Functions on LocalStack. See the next section for a streamlined deploy that also updates your env files.
 - For WebSocket/manual flows, the API service must be running (`npm run dev:api` or deployed Fargate task).
 
 Environment variables live under `base/apps/api/.env` and `base/apps/match-processor/.env`. Create `.env.local` copies whenever you need to override defaults.
+
+---
+
+## 1.1 Settlement Workflow (LocalStack) — Quick Setup
+
+Use this when you want matches to complete automatically on the timer via Step Functions and broadcast the result to connected clients.
+
+1) Deploy the settlement Lambdas and update env files
+
+```bash
+# From repo root
+## Default (Docker Desktop/macOS)
+npm run -w api deploy:lambdas
+
+## Custom LocalStack host (e.g., localstack-main.orb.local)
+# Lambdas must reach LocalStack/Redis from inside their container. Set:
+LAMBDA_LOCALSTACK_HOST=localstack-main.orb.local \
+  npm run -w api deploy:lambdas
+```
+
+This bundles and deploys:
+- `match-compute-outcome` → sets `MATCH_COMPUTE_OUTCOME_FN_ARN`
+- `match-broadcast-completion` → sets `MATCH_BROADCAST_COMPLETION_FN_ARN`
+
+Both apps/api/.env and apps/api/.env.example are updated with the ARNs.
+
+2) Create or update the Step Functions state machine
+
+```bash
+npm run setup:step-functions -w api
+```
+
+Copy the printed ARN into `MATCH_SETTLEMENT_STATE_MACHINE_ARN` in `apps/api/.env` if it differs, then restart the API.
+
+3) Verify base env for local dev
+
+- `STEP_FUNCTIONS_ENDPOINT=http://localhost:4566` (or `http://localstack-main.orb.local:4566`)
+- `DYNAMODB_URL=http://localhost:4566` (or same custom host)
+- `WAGE_TABLE_NAME=WageTable`
+- `REDIS_URL=redis://127.0.0.1:6379`
+
+Notes
+- The internal settlement worker runs as a safety net and finalizes time‑expired matches if a winner is missing. With Step Functions configured, it will typically find nothing to do.
+- The initial portfolio budget is `$100,000`; shares are sized from that budget at match start.
+
+---
+
+## 1.2 Commands Quick Reference
+
+- Deploy settlement Lambdas to LocalStack and update env files:
+  - `npm run -w api deploy:lambdas`
+- Create/update Step Functions state machine (reads env ARNs):
+  - `npm run setup:step-functions -w api`
+- Start services:
+  - API: `npm run dev:api`
+  - Match processor: `npm run dev:match-processor`
+- Run end‑to‑end system check:
+  - `npm run system:test -w api`
+
+Verification (LocalStack CLI):
+- List Lambdas: `aws lambda list-functions --region us-east-1 --endpoint-url http://localhost:4566`
+- List state machines: `aws stepfunctions list-state-machines --region us-east-1 --endpoint-url http://localhost:4566`
+  - If using a custom host, swap `http://localhost:4566` for `http://localstack-main.orb.local:4566`.
 
 ---
 
@@ -43,11 +106,13 @@ You can skip steps 3 and 4, assuming you have steps 1 and 2 set-up, just run ste
    ```  
    Point both services to `redis://127.0.0.1:6379`.
 
-2. **DynamoDB Local**  
-   ```bash
-   docker run --name wage-dynamodb -p 8000:8000 -d amazon/dynamodb-local
-   ```  
-   Export `DYNAMODB_URL=http://127.0.0.1:8000` and run `npm run create-table -w api`.
+2. **DynamoDB / LocalStack**  
+   - Option A (LocalStack): ensure LocalStack is running at `http://localhost:4566` and set `DYNAMODB_URL=http://localhost:4566`, then run `npm run create-table -w api`.
+   - Option B (DynamoDB Local):
+     ```bash
+     docker run --name wage-dynamodb -p 8000:8000 -d amazon/dynamodb-local
+     ```
+     Export `DYNAMODB_URL=http://127.0.0.1:8000` and run `npm run create-table -w api`.
 
 3. **Seed data**  
    ```bash
@@ -61,7 +126,10 @@ You can skip steps 3 and 4, assuming you have steps 1 and 2 set-up, just run ste
    ```bash
    npm run system:test -w api
    ```  
-   Runs the orchestration script that prepares DynamoDB, seeds assets/players, drives WebSocket matchmaking, and (optionally) validates Step Functions settlements against LocalStack.
+   Runs the orchestration script that prepares DynamoDB, seeds assets/players, drives WebSocket matchmaking, and validates settlements. It runs two matches concurrently:
+   - A/B: forfeit scenario
+   - C/D: 30s timed match with distinct assets; off‑hours, the script simulates price moves so percent‑based winner is deterministic.
+   During market hours, simulated price moves are skipped; completion still occurs via Step Functions, and the script logs observed totals.
 
 Future work: add a `docker-compose.test.yml` that boots Redis + DynamoDB Local and exposes them through `npm run test:integration`.
 
@@ -91,16 +159,25 @@ These scenarios mirror the connection-lifecycle and broadcast guarantees called 
    DynamoDB item must transition to `status = in_progress`.
 2. Run the match processor locally (`npm run dev:match-processor -w match-processor`).  
    - Check it logs active matches, calls Twelve Data (or mock), and updates DynamoDB PK `ASSET#`.
+   - Zero prices from seed data are treated as not fresh; the first run fetches real prices before caching.
    - Confirm future broadcasts emit `price_update` snapshots (after implementation).
 
-### D. Forfeit / Surrender Events (planned)
+### D. Win Condition (Percent‑Based)
+- Budget is fixed at `$100,000` per player; shares are sized from that budget at match start.
+- Winner is the player with the higher percentage return; since budgets match, comparing final portfolio totals is equivalent to comparing returns.
+
+### E. Concurrency & Connections
+- System check opens four WebSocket connections (A/B/C/D) and runs two matches concurrently.
+- After a scenario completes, the script closes those sockets; API logs may show fewer “Active connections” at different moments — this is expected as clients disconnect in finally blocks.
+
+### F. Forfeit / Surrender Events
 Once the new events land, simulate forfeits:
 1. Trigger the API endpoint or WebSocket action that marks a player as forfeited during asset selection.  
    Expect `player_forfeited` broadcast with `phase: "asset_selection"` and match status update.
 2. Trigger a surrender during `in_progress`.  
    Expect the same event with `phase: "in_progress"` plus `winnerId`.
 
-### E. Token Refresh Flow
+### G. Token Refresh Flow
 1. Complete OTP sign-in and capture the returned `refreshToken`.
 2. Call `POST /auth/token/refresh` with `{ "refreshToken": "<token>" }`.  
    - Expect `200 OK` with fresh `accessToken`, `refreshToken`, `refreshTokenExpiresAt`.
@@ -136,7 +213,33 @@ Each suite should run via `npm run test:<name>` and be wired into CI (see `docs/
 
 ---
 
-## 6. Production Smoke Tests
+## 6. Troubleshooting
+
+- Step Functions run timeouts (timed match doesn’t complete):
+  - Ensure Lambdas are deployed: `npm run -w api deploy:lambdas`, then `aws lambda list-functions --endpoint-url http://localhost:4566`.
+  - Ensure the state machine was updated: `npm run setup:step-functions -w api` and set `MATCH_SETTLEMENT_STATE_MACHINE_ARN`.
+  - Check LocalStack executions for failures in `ComputeOutcome` or `CompleteMatchWithOutcome`.
+  - If needed, temporarily unset `MATCH_COMPUTE_OUTCOME_FN_ARN` to fall back to direct `CompleteMatch` during local iteration.
+- Lambda cannot reach LocalStack (ECONNREFUSED 127.0.0.1:4566):
+  - Lambdas run in Docker; `127.0.0.1` points to the Lambda container, not your host.
+  - Our deploy script sets Lambda env to use `host.docker.internal` by default.
+  - If your environment exposes LocalStack via another DNS (e.g., `localstack-main.orb.local`), run deploy with:
+    - `LAMBDA_LOCALSTACK_HOST=localstack-main.orb.local npm run -w api deploy:lambdas`
+  - Alternatively override URLs directly:
+    - `LAMBDA_DYNAMODB_URL=http://localstack-main.orb.local:4566 LAMBDA_REDIS_URL=redis://localstack-main.orb.local:6379 npm run -w api deploy:lambdas`
+- LocalStack credentials errors (Partial credentials / missing secret):
+  - Use LocalStack creds: `AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test` (the deploy scripts set these automatically).
+- DynamoDB table not found on boot:
+  - Create it: `npm run create-table -w api` (with `DYNAMODB_URL=http://localhost:4566`).
+- Price remains `$0` after seeding:
+  - First run will fetch and cache non‑zero prices; verify match‑processor logs show price updates, or set `USE_PRICE_SERVICE_STUB=true` for entirely local runs.
+
+### Match IDs in Logs
+- System check prints both match IDs on completion:
+  - `⏱️  Timed Match <id>` and `🏳️  Forfeit Match <id>` with totals and returns.
+- Lobby tests remain part of the flow in section 4 (asset selection, ready checks, and broadcast assertions).
+
+## 7. Production Smoke Tests
 
 After every deploy run:
 - `GET /health` (already wired to the ALB health check).
@@ -148,7 +251,7 @@ Automating these as synthetic monitors (e.g., CloudWatch Synthetics, Grafana k6)
 
 ---
 
-## 7. Reporting Issues
+## 8. Reporting Issues
 
 Log failures in the engineering slack channel with:
 - Environment, build/tag, and command run.

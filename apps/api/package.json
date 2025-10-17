@@ -43,6 +43,7 @@
     "create-partial-ready-match": "tsx src/scripts/create-partial-ready-match.ts",
     "create-test-players": "tsx src/scripts/create-test-players.ts",
     "setup:step-functions": "tsx src/scripts/setup-step-function.ts",
+    "deploy:lambdas": "tsx src/step-functions/deploy.ts",
     "system:test": "tsx src/scripts/system-check.ts"
   },
   "devDependencies": {
