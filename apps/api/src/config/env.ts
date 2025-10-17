@@ -101,6 +101,10 @@ export const envSchema: FastifyEnvOptions['schema'] = {
       type: 'number',
       default: 3000,
     },
+    MAX_CONCURRENT_MATCHES: {
+      type: 'string',
+      default: '0',
+    },
   },
 };
 
@@ -126,4 +130,5 @@ export type Env = {
   STEP_FUNCTIONS_ENDPOINT?: string;
   USE_TWILIO_STUB?: string;
   PRICE_STATUS_STALE_THRESHOLD_SECONDS: string;
+  MAX_CONCURRENT_MATCHES?: string;
 };

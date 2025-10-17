@@ -4,6 +4,7 @@ import {
   GetCommand,
   PutCommand,
   UpdateCommand,
+  ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
@@ -459,6 +460,33 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     }
   };
 
+  const countInProgressMatchesForUser = async (userId: string): Promise<number> => {
+    try {
+      const { Count } = await dynamodb.send(
+        new ScanCommand({
+          TableName: resolveMatchTableName(),
+          FilterExpression: '#entity = :match AND SK = :details AND contains(#players, :uid) AND #status = :inprog',
+          ExpressionAttributeNames: {
+            '#entity': 'EntityType',
+            '#players': 'players',
+            '#status': 'status',
+          },
+          ExpressionAttributeValues: {
+            ':match': 'Match',
+            ':details': 'DETAILS',
+            ':uid': userId,
+            ':inprog': 'in_progress',
+          },
+          Select: 'COUNT',
+        })
+      )
+      return Count ?? 0
+    } catch (error) {
+      logger.error({ error, userId, msg: 'Error counting in-progress matches for user' })
+      return 0
+    }
+  }
+
   const completeMatchWithOutcome = async (
     matchId: string,
     params: {
@@ -558,5 +586,6 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     setAssetInitialPricing,
     completeMatchWithOutcome,
     updateMatchTentativeEndTime,
+    countInProgressMatchesForUser,
   };
 };

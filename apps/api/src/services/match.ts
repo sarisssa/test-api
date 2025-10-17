@@ -504,6 +504,38 @@ export const handlePlayerForfeit = async (
     return match;
   }
 
+  // In production/cloud environments, enforce a grace period before allowing forfeit
+  // Local development (NODE_ENV=development) remains unrestricted for easier testing
+  try {
+    if (fastify.config.NODE_ENV !== 'development') {
+      const startedAt = match.matchStartedAt ? new Date(match.matchStartedAt).getTime() : undefined
+      const tentativeEnd = match.matchTentativeEndTime
+        ? new Date(match.matchTentativeEndTime).getTime()
+        : undefined
+      if (startedAt && tentativeEnd && tentativeEnd > startedAt) {
+        const totalMs = tentativeEnd - startedAt
+        const gracePercentRaw = process.env.FORFEIT_GRACE_PERCENT ?? '0.1'
+        const gracePercent = Math.max(0, Math.min(1, Number(gracePercentRaw))) || 0.1
+        const minElapsedMs = totalMs * gracePercent
+        const elapsedMs = Date.now() - startedAt
+        if (elapsedMs < minElapsedMs) {
+          const minSeconds = Math.ceil(minElapsedMs / 1000)
+          throw new ValidationError(
+            `Forfeit not allowed yet. You can forfeit after ${minSeconds}s (grace ${Math.round(
+              gracePercent * 100
+            )}% of match time).`
+          )
+        }
+      }
+    }
+  } catch (err) {
+    // Re-throw validation errors to caller; log unexpected errors and continue to avoid blocking forfeit
+    if (err instanceof ValidationError) {
+      throw err
+    }
+    fastify.log.warn({ err, matchId }, 'Failed to evaluate forfeit grace period; proceeding without restriction')
+  }
+
   if (match.matchSettlementExecutionArn) {
     await stopSettlementExecution(
       fastify,
