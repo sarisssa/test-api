@@ -1,6 +1,11 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { createChallenge, getUserChallenges } from '../services/challenge.js';
 import { getUserFriends, getUserRequests } from '../services/friend.js';
 import { generateInviteLink, getUserInvites } from '../services/invite.js';
+import {
+  isChallengeExpired,
+  validateChallengeCreation,
+} from '../utils/challenge-utils.js';
 
 import { getUserPerks } from '../services/perk.js';
 import {
@@ -9,6 +14,14 @@ import {
   updateUsername,
   uploadProfilePicture,
 } from '../services/user.js';
+import {
+  challengesResponseJsonSchema,
+  CreateChallengeBody,
+  createChallengeJsonSchema,
+  createChallengeResponseJsonSchema,
+  UpdateChallengeParams,
+  updateChallengeParamsJsonSchema,
+} from '../types/challenge.js';
 import {
   CreateFriendRequestBody,
   createFriendRequestJsonSchema,
@@ -779,6 +792,260 @@ export default async function userRoutes(fastify: FastifyInstance) {
         });
         return reply.status(500).send({
           error: 'Failed to remove friend',
+        });
+      }
+    }
+  );
+
+  fastify.get(
+    '/challenges',
+    {
+      schema: {
+        security: [{ bearerAuth: [] }],
+        tags: ['user'],
+        description: 'Get all user challenges (incoming and outgoing)',
+        response: {
+          200: challengesResponseJsonSchema,
+          500: {
+            description: 'Internal server error',
+            $ref: 'ErrorResponse#',
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const challenges = await getUserChallenges(
+          fastify,
+          request.user.userId
+        );
+        return reply.send({
+          challenges,
+          stats: {
+            total: challenges.length,
+            outgoing: challenges.filter(c => c.direction === 'outgoing').length,
+            incoming: challenges.filter(c => c.direction === 'incoming').length,
+          },
+        });
+      } catch (error) {
+        fastify.log.error({
+          error,
+          userId: request.user.userId,
+          msg: 'Error in GET /user/challenges endpoint',
+        });
+        return reply.status(500).send({
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Failed to fetch challenges',
+        });
+      }
+    }
+  );
+
+  fastify.post<{ Body: CreateChallengeBody }>(
+    '/challenges',
+    {
+      schema: {
+        security: [{ bearerAuth: [] }],
+        tags: ['user'],
+        description: 'Issue a challenge to another player',
+        body: createChallengeJsonSchema,
+        response: {
+          201: createChallengeResponseJsonSchema,
+          400: {
+            description: 'Invalid request',
+            type: 'object',
+            properties: {
+              error: { type: 'string' },
+            },
+          },
+          500: {
+            description: 'Internal server error',
+            type: 'object',
+            properties: {
+              error: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { challengedId, duration, amount, category } = request.body;
+
+      if (request.user.userId === challengedId) {
+        return reply.status(400).send({
+          error: 'Cannot challenge yourself',
+        });
+      }
+
+      const validationError = validateChallengeCreation(category, duration);
+      if (validationError) {
+        return reply.status(400).send({
+          error: validationError,
+        });
+      }
+
+      try {
+        const challenge = await createChallenge(
+          fastify,
+          request.user.userId,
+          challengedId,
+          duration,
+          amount,
+          category
+        );
+
+        return reply.status(201).send({
+          challengeId: challenge.challengeId,
+          message: 'Challenge issued successfully',
+          challenge,
+        });
+      } catch (error) {
+        fastify.log.error({
+          error,
+          challengerId: request.user.userId,
+          challengedId,
+          msg: 'Error in POST /user/challenges endpoint',
+        });
+        return reply.status(500).send({
+          error: 'Failed to issue challenge',
+        });
+      }
+    }
+  );
+
+  fastify.patch<{ Params: UpdateChallengeParams }>(
+    '/challenges/:challengeId',
+    {
+      schema: {
+        security: [{ bearerAuth: [] }],
+        tags: ['user'],
+        description:
+          'Update challenge status - Challenged player can accept/reject, Challenger can cancel',
+        params: updateChallengeParamsJsonSchema,
+        body: {
+          type: 'object',
+          properties: {
+            status: {
+              type: 'string',
+              enum: ['accepted', 'rejected', 'cancelled'],
+            },
+          },
+          required: ['status'],
+          additionalProperties: false,
+        },
+        response: {
+          200: {
+            description: 'Challenge processed successfully',
+            type: 'object',
+            properties: {
+              message: { type: 'string' },
+            },
+          },
+          400: {
+            description: 'Invalid request',
+            type: 'object',
+            properties: {
+              error: { type: 'string' },
+            },
+          },
+          403: {
+            description: 'Not authorized to respond to this challenge',
+            type: 'object',
+            properties: {
+              error: { type: 'string' },
+            },
+          },
+          404: {
+            description: 'Challenge not found',
+            type: 'object',
+            properties: {
+              error: { type: 'string' },
+            },
+          },
+          500: {
+            description: 'Internal server error',
+            type: 'object',
+            properties: {
+              error: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { challengeId } = request.params;
+      const { status } = request.body as {
+        status: 'accepted' | 'rejected' | 'cancelled';
+      };
+
+      try {
+        const challenge =
+          await fastify.repositories.challenge.getChallenge(challengeId);
+
+        if (!challenge) {
+          return reply.status(404).send({
+            error: 'Challenge not found',
+          });
+        }
+
+        if (challenge.status !== 'PENDING') {
+          return reply.status(400).send({
+            error: 'Challenge has already been processed',
+          });
+        }
+
+        const isChallenged = challenge.challengedId === request.user.userId;
+        const isChallenger = challenge.challengerId === request.user.userId;
+
+        if (status === 'cancelled') {
+          if (!isChallenger) {
+            return reply.status(403).send({
+              error: 'Only the challenger can cancel this challenge',
+            });
+          }
+        } else {
+          if (!isChallenged) {
+            return reply.status(403).send({
+              error: 'Only the challenged player can accept or reject',
+            });
+          }
+
+          if (isChallengeExpired(challenge.expiresAt)) {
+            await fastify.repositories.challenge.updateChallengeStatus(
+              challengeId,
+              'EXPIRED'
+            );
+            return reply.status(400).send({
+              error: 'Challenge has expired and can no longer be accepted',
+            });
+          }
+        }
+
+        await fastify.repositories.challenge.updateChallengeStatus(
+          challengeId,
+          status.toUpperCase() as 'ACCEPTED' | 'REJECTED' | 'CANCELLED'
+        );
+
+        const messages = {
+          accepted: 'Challenge accepted',
+          rejected: 'Challenge rejected',
+          cancelled: 'Challenge cancelled',
+        };
+
+        return reply.status(200).send({
+          message: messages[status],
+        });
+      } catch (error) {
+        fastify.log.error({
+          error,
+          challengeId,
+          userId: request.user.userId,
+          status,
+          msg: 'Error in PATCH /user/challenges/:challengeId endpoint',
+        });
+        return reply.status(500).send({
+          error: 'Failed to process challenge',
         });
       }
     }
