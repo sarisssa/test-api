@@ -74,8 +74,8 @@ function buildAssetPriceItem(
 ): Record<string, unknown> {
   const lastUpdated = new Date().toISOString();
   return {
-    PK: `ASSET#${assetType}`,
-    SK: symbol,
+    pk: `ASSET#${assetType}`,
+    sk: symbol,
     AssetType: assetType,
     Symbol: symbol,
     currentPrice,
@@ -283,8 +283,8 @@ async function seedAllAssets() {
     for (const symbol of STOCK_TICKERS) {
       if (!metadataBySymbol.has(symbol)) {
         addMetadata({
-          PK: `ASSET#${symbol}`,
-          SK: `METADATA#${symbol}`,
+          pk: `ASSET#${symbol}`,
+          sk: `METADATA#${symbol}`,
           EntityType: 'Asset',
           AssetType: 'STOCK',
           Symbol: symbol,
@@ -299,8 +299,8 @@ async function seedAllAssets() {
     for (const asset of CRYPTO_ASSETS) {
       if (!metadataBySymbol.has(asset.symbol)) {
         addMetadata({
-          PK: `ASSET#${asset.symbol}`,
-          SK: `METADATA#${asset.symbol}`,
+          pk: `ASSET#${asset.symbol}`,
+          sk: `METADATA#${asset.symbol}`,
           EntityType: 'Asset',
           AssetType: 'CRYPTO',
           Symbol: asset.symbol,
@@ -316,8 +316,8 @@ async function seedAllAssets() {
     for (const asset of COMMODITY_ASSETS) {
       if (!metadataBySymbol.has(asset.symbol)) {
         addMetadata({
-          PK: `ASSET#${asset.symbol}`,
-          SK: `METADATA#${asset.symbol}`,
+          pk: `ASSET#${asset.symbol}`,
+          sk: `METADATA#${asset.symbol}`,
           EntityType: 'Asset',
           AssetType: 'COMMODITY',
           Symbol: asset.symbol,

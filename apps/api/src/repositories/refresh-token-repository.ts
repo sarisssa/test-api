@@ -9,20 +9,17 @@ import { FastifyInstance } from 'fastify';
 import { DynamoDBRefreshTokenItem } from '../models/auth.js';
 
 const buildKey = (hashedToken: string) => ({
-  PK: `REFRESH#${hashedToken}` as const,
-  SK: 'REFRESH' as const,
+  pk: `REFRESH#${hashedToken}` as const,
+  sk: 'REFRESH' as const,
 });
 
-const normaliseItem = (item: DynamoDBRefreshTokenItem): DynamoDBRefreshTokenItem => {
-  const pk = item.pk ?? (item.PK as `REFRESH#${string}`);
-  const sk = item.sk ?? (item.SK as 'REFRESH' | undefined) ?? 'REFRESH';
-
+const normaliseItem = (
+  item: DynamoDBRefreshTokenItem
+): DynamoDBRefreshTokenItem => {
   return {
     ...item,
-    pk,
-    sk,
-    PK: (item.PK ?? pk) as `REFRESH#${string}`,
-    SK: (item.SK ?? sk) as 'REFRESH',
+    pk: item.pk,
+    sk: item.sk,
   };
 };
 
@@ -39,10 +36,8 @@ export const createRefreshTokenRepository = (fastify: FastifyInstance) => {
 
     const record: DynamoDBRefreshTokenItem = normaliseItem({
       ...item,
-      pk: key.PK,
-      sk: key.SK,
-      PK: key.PK,
-      SK: key.SK,
+      pk: key.pk,
+      sk: key.sk,
     });
 
     await dynamodb.send(
@@ -68,39 +63,27 @@ export const createRefreshTokenRepository = (fastify: FastifyInstance) => {
       new GetCommand({
         TableName: fastify.config.DYNAMODB_TABLE_NAME,
         Key: {
-          PK: key.PK,
-          SK: key.SK,
+          pk: key.pk,
+          sk: key.sk,
         },
       })
     );
 
-    let item = result.Item as DynamoDBRefreshTokenItem | undefined;
-
-    if (!item) {
-      const legacyResult = await dynamodb.send(
-        new GetCommand({
-          TableName: fastify.config.DYNAMODB_TABLE_NAME,
-          Key: {
-            pk: key.PK,
-            sk: key.SK,
-          },
-        })
-      );
-      item = legacyResult.Item as DynamoDBRefreshTokenItem | undefined;
-    }
-
+    const item = result.Item as DynamoDBRefreshTokenItem | undefined;
     return item ? normaliseItem(item) : undefined;
   };
 
-  const deleteRefreshTokenByHash = async (hashedToken: string): Promise<void> => {
+  const deleteRefreshTokenByHash = async (
+    hashedToken: string
+  ): Promise<void> => {
     const key = buildKey(hashedToken);
 
     await dynamodb.send(
       new DeleteCommand({
         TableName: fastify.config.DYNAMODB_TABLE_NAME,
         Key: {
-          PK: key.PK,
-          SK: key.SK,
+          pk: key.pk,
+          sk: key.sk,
         },
       })
     );

@@ -1,8 +1,8 @@
 import { PlayerAssetSelections } from '../types/match.js';
 
 export interface DynamoDBMatchItem {
-  PK: `MATCH#${string}`;
-  SK: 'DETAILS';
+  pk: `MATCH#${string}`;
+  sk: 'DETAILS';
   EntityType: 'Match';
 
   matchId: string;
@@ -31,8 +31,8 @@ export interface DynamoDBMatchItem {
 }
 
 export interface DynamoDBPlayerMatchItem {
-  PK: `USER#${string}`;
-  SK: `MATCH#${string}`;
+  pk: `USER#${string}`;
+  sk: `MATCH#${string}`;
   EntityType: 'PlayerMatch';
 
   matchId: string;

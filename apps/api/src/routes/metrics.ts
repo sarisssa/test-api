@@ -24,8 +24,8 @@ export default async function metricsRoutes(fastify: FastifyInstance) {
         new GetCommand({
           TableName: fastify.config.DYNAMODB_TABLE_NAME,
           Key: {
-            PK: PRICE_STATUS_PK,
-            SK: PRICE_STATUS_SK,
+            pk: PRICE_STATUS_PK,
+            sk: PRICE_STATUS_SK,
           },
         })
       );
@@ -56,13 +56,7 @@ export default async function metricsRoutes(fastify: FastifyInstance) {
         });
       }
 
-      const {
-        errors,
-        errorCount,
-        staleSymbols,
-        updatedAt,
-        ...rest
-      } = item;
+      const { errors, errorCount, staleSymbols, updatedAt, ...rest } = item;
 
       return {
         status: isStale ? 'stale' : 'ok',

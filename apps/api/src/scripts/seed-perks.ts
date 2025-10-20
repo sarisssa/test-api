@@ -157,10 +157,7 @@ const perkData: PerkSeedData[] = [
   },
 ];
 
-type SeedPerkItem = DynamoDBPerkItem & {
-  PK: DynamoDBPerkItem['pk'];
-  SK: DynamoDBPerkItem['sk'];
-};
+type SeedPerkItem = DynamoDBPerkItem;
 
 function transformPerkToDynamoDB(perk: PerkSeedData): SeedPerkItem {
   const now = new Date().toISOString();
@@ -179,11 +176,7 @@ function transformPerkToDynamoDB(perk: PerkSeedData): SeedPerkItem {
     updatedAt: now,
   };
 
-  return {
-    ...baseItem,
-    PK: baseItem.pk,
-    SK: baseItem.sk,
-  };
+  return baseItem;
 }
 
 async function batchWrite(items: SeedPerkItem[]) {

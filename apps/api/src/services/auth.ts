@@ -62,8 +62,6 @@ const issueTokensForUser = async (
   await fastify.repositories.refreshToken.persistRefreshToken({
     pk: `REFRESH#${hashedToken}`,
     sk: 'REFRESH',
-    PK: `REFRESH#${hashedToken}`,
-    SK: 'REFRESH',
     EntityType: 'RefreshToken',
     tokenId,
     hashedToken,

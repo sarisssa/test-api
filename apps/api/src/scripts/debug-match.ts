@@ -1,11 +1,11 @@
-import 'dotenv/config'
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
-import { DynamoDBDocumentClient, GetCommand } from '@aws-sdk/lib-dynamodb'
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, GetCommand } from '@aws-sdk/lib-dynamodb';
+import 'dotenv/config';
 
-const matchId = process.argv[2]
+const matchId = process.argv[2];
 if (!matchId) {
-  console.error('Usage: tsx src/scripts/debug-match.ts <matchId>')
-  process.exit(1)
+  console.error('Usage: tsx src/scripts/debug-match.ts <matchId>');
+  process.exit(1);
 }
 
 const dynamodb = DynamoDBDocumentClient.from(
@@ -14,36 +14,34 @@ const dynamodb = DynamoDBDocumentClient.from(
     endpoint: process.env.DYNAMODB_URL ?? 'http://localhost:4566',
     credentials: {
       accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? 'test',
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? 'test'
-    }
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? 'test',
+    },
   })
-)
+);
 
 const tableName =
-  process.env.WAGE_TABLE_NAME ??
-  process.env.DYNAMODB_TABLE_NAME ??
-  'WageTable'
+  process.env.WAGE_TABLE_NAME ?? process.env.DYNAMODB_TABLE_NAME ?? 'WageTable';
 
 const run = async () => {
   const response = await dynamodb.send(
     new GetCommand({
       TableName: tableName,
       Key: {
-        PK: `MATCH#${matchId}`,
-        SK: 'DETAILS'
-      }
+        pk: `MATCH#${matchId}`,
+        sk: 'DETAILS',
+      },
     })
-  )
+  );
 
   if (!response.Item) {
-    console.error(`Match ${matchId} not found`)
-    process.exit(1)
+    console.error(`Match ${matchId} not found`);
+    process.exit(1);
   }
 
-  console.log(JSON.stringify(response.Item, null, 2))
-}
+  console.log(JSON.stringify(response.Item, null, 2));
+};
 
 run().catch(error => {
-  console.error('Failed to fetch match', error)
-  process.exit(1)
-})
+  console.error('Failed to fetch match', error);
+  process.exit(1);
+});

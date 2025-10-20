@@ -65,8 +65,8 @@ export const updateAssetPrice = async (
     const updateParams = {
       TableName: WAGE_TABLE_NAME,
       Key: {
-        PK: `ASSET#${assetType}`,
-        SK: symbol
+        pk: `ASSET#${assetType}`,
+        sk: symbol
       },
       UpdateExpression: 'SET currentPrice = :price, lastUpdated = :lastUpdated',
       ExpressionAttributeValues: {
@@ -102,8 +102,8 @@ export const batchUpdateAssetPrices = async (
       const updateParams = {
         TableName: WAGE_TABLE_NAME,
         Key: {
-          PK: `ASSET#${assetType}`,
-          SK: symbol
+          pk: `ASSET#${assetType}`,
+          sk: symbol
         },
         UpdateExpression: 'SET currentPrice = :price, lastUpdated = :lastUpdated',
         ExpressionAttributeValues: {
@@ -148,8 +148,8 @@ export const getAssetPriceRecords = async (
       const getParams = {
         TableName: WAGE_TABLE_NAME,
         Key: {
-          PK: `ASSET#${assetType}`,
-          SK: symbol
+          pk: `ASSET#${assetType}`,
+          sk: symbol
         }
       }
 
@@ -176,8 +176,8 @@ export const recordPriceRunMetrics = async (metrics: PriceRunMetrics): Promise<v
   const params = {
     TableName: WAGE_TABLE_NAME,
     Item: {
-      PK: 'PRICE_STATUS',
-      SK: 'SUMMARY',
+      pk: 'PRICE_STATUS',
+      sk: 'SUMMARY',
       fetchedAt: metrics.fetchedAt,
       matchesProcessed: metrics.matchesProcessed,
       tickersProcessed: metrics.tickersProcessed,
@@ -208,8 +208,8 @@ export const updateMatchPlayerAssetPrices = async (
       new UpdateCommand({
         TableName: WAGE_TABLE_NAME,
         Key: {
-          PK: `MATCH#${matchId}`,
-        SK: 'DETAILS'
+          pk: `MATCH#${matchId}`,
+          sk: 'DETAILS'
         },
         UpdateExpression: 'SET playerAssets = :playerAssets',
         ExpressionAttributeValues: {

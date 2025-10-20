@@ -23,32 +23,22 @@ export const createUserRepository = (fastify: FastifyInstance) => {
   const { log: logger } = fastify;
 
   const buildUserKey = (hashedPhoneNumber: string) => ({
-    PK: `USER#${hashedPhoneNumber}` as const,
-    SK: 'PROFILE' as const,
+    pk: `USER#${hashedPhoneNumber}` as const,
+    sk: 'PROFILE' as const,
   });
 
   const normaliseUserItem = (item: DynamoDBUserItem): DynamoDBUserItem => {
-    const pk = item.pk ?? (item.PK as `USER#${string}`);
-    const sk = item.sk ?? (item.SK as 'PROFILE' | undefined) ?? 'PROFILE';
-
     return {
       ...item,
-      pk,
-      sk,
-      PK: (item.PK ?? pk) as `USER#${string}`,
-      SK: (item.SK ?? sk) as 'PROFILE',
+      pk: item.pk,
+      sk: item.sk,
     };
   };
 
-  const getUserItemWithLegacyKeys = (item: DynamoDBUserItem): DynamoDBUserItem => {
-    const normalised = normaliseUserItem(item);
-    return {
-      ...normalised,
-      pk: normalised.pk,
-      sk: normalised.sk,
-      PK: normalised.PK,
-      SK: normalised.SK,
-    };
+  const getUserItemWithLegacyKeys = (
+    item: DynamoDBUserItem
+  ): DynamoDBUserItem => {
+    return normaliseUserItem(item);
   };
 
   const fetchUserByPhone = async (
@@ -77,8 +67,8 @@ export const createUserRepository = (fastify: FastifyInstance) => {
           new GetCommand({
             TableName: tableName,
             Key: {
-              pk: key.PK,
-              sk: key.SK,
+              pk: key.pk,
+              sk: key.sk,
             },
           })
         );
@@ -102,10 +92,8 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     const key = buildUserKey(hashedPhoneNumber);
 
     const user: DynamoDBUserItem = {
-      pk: key.PK,
-      sk: key.SK,
-      PK: key.PK,
-      SK: key.SK,
+      pk: key.pk,
+      sk: key.sk,
       EntityType: 'User',
       userId,
       hashedPhoneNumber,
@@ -140,11 +128,11 @@ export const createUserRepository = (fastify: FastifyInstance) => {
       return user;
     } catch (error) {
       if (error instanceof ConditionalCheckFailedException) {
-      logger.warn({
-        phoneNumber,
-        msg: 'User already exists, another concurrent request likely created it.',
-      });
-      // In this case, fetch the existing user that was just created by the other task
+        logger.warn({
+          phoneNumber,
+          msg: 'User already exists, another concurrent request likely created it.',
+        });
+        // In this case, fetch the existing user that was just created by the other task
         const existingUser = await fetchUserByPhone(phoneNumber);
         if (existingUser) {
           return existingUser;
@@ -178,8 +166,8 @@ export const createUserRepository = (fastify: FastifyInstance) => {
         new UpdateCommand({
           TableName: fastify.config.DYNAMODB_TABLE_NAME,
           Key: {
-            PK: key.PK,
-            SK: key.SK,
+            pk: key.pk,
+            sk: key.sk,
           },
           UpdateExpression: 'SET lastLoggedIn = :lastLoggedIn',
           ExpressionAttributeValues: {
@@ -239,7 +227,9 @@ export const createUserRepository = (fastify: FastifyInstance) => {
       const result = await dynamodb.send(new ScanCommand(scanParams));
 
       if (result.Items && result.Items.length > 0) {
-        const user = getUserItemWithLegacyKeys(result.Items[0] as DynamoDBUserItem);
+        const user = getUserItemWithLegacyKeys(
+          result.Items[0] as DynamoDBUserItem
+        );
 
         return user;
       }
@@ -388,10 +378,7 @@ export const createUserRepository = (fastify: FastifyInstance) => {
         pkAttr: string;
         skAttr: string;
         pkValue?: string;
-      }> = [
-        { pkAttr: 'PK', skAttr: 'SK', pkValue: user.PK },
-        { pkAttr: 'pk', skAttr: 'sk', pkValue: user.pk },
-      ];
+      }> = [{ pkAttr: 'pk', skAttr: 'sk', pkValue: user.pk }];
 
       for (const variation of variations) {
         const { pkAttr, skAttr, pkValue } = variation;

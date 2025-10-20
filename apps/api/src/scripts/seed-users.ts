@@ -1,5 +1,5 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import type { DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   BatchWriteCommand,
   DynamoDBDocumentClient,
@@ -31,9 +31,7 @@ if (!PHONE_HASH_SALT) {
 initializePhoneHashSalt(PHONE_HASH_SALT);
 
 const TABLE_NAME =
-  process.env.WAGE_TABLE_NAME ??
-  process.env.DYNAMODB_TABLE_NAME ??
-  'WageTable';
+  process.env.WAGE_TABLE_NAME ?? process.env.DYNAMODB_TABLE_NAME ?? 'WageTable';
 
 const region = process.env.AWS_REGION ?? 'us-east-1';
 const endpoint =
@@ -70,10 +68,7 @@ interface TestUserData {
   bio?: string;
 }
 
-type SeedUserItem = DynamoDBUserItem & {
-  PK: DynamoDBUserItem['pk'];
-  SK: DynamoDBUserItem['sk'];
-};
+type SeedUserItem = DynamoDBUserItem;
 
 const testUsers: TestUserData[] = [
   {
@@ -168,11 +163,7 @@ function transformUserToDynamoDB(userData: TestUserData): SeedUserItem {
     bio: userData.bio,
   };
 
-  return {
-    ...baseItem,
-    PK: baseItem.pk,
-    SK: baseItem.sk,
-  };
+  return baseItem;
 }
 
 async function batchWrite(items: SeedUserItem[]) {

@@ -1,8 +1,6 @@
 export interface DynamoDBUserItem {
   pk: `USER#${string}`;
   sk: 'PROFILE';
-  PK?: `USER#${string}`;
-  SK?: 'PROFILE';
   EntityType: 'User';
   userId: string;
   hashedPhoneNumber: string;

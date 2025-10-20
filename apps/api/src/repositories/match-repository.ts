@@ -3,8 +3,8 @@ import {
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
-  UpdateCommand,
   ScanCommand,
+  UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
@@ -58,8 +58,8 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
         new PutCommand({
           TableName: resolveMatchTableName(),
           Item: {
-            PK: `MATCH#${matchId}`,
-            SK: 'DETAILS',
+            pk: `MATCH#${matchId}`,
+            sk: 'DETAILS',
             EntityType: 'Match',
             matchId,
             players,
@@ -104,8 +104,8 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
       ) {
         logger.info({ matchId, msg: 'Match found in Redis cache' });
         return {
-          PK: `MATCH#${matchId}`,
-          SK: 'DETAILS',
+          pk: `MATCH#${matchId}`,
+          sk: 'DETAILS',
           EntityType: 'Match',
           matchId,
           players: JSON.parse(cachedMatch.players),
@@ -121,7 +121,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
       const matchResult = await dynamodb.send(
         new GetCommand({
           TableName: resolveMatchTableName(),
-          Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
+          Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' },
         })
       );
 
@@ -172,9 +172,9 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
       await dynamodb.send(
         new UpdateCommand({
           TableName: resolveMatchTableName(),
-          Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
+          Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' },
           ConditionExpression:
-            'attribute_exists(PK) AND attribute_exists(SK) AND #status = :assetStatus AND size(playerAssets.#userId.assets) < :maxAssets',
+            'attribute_exists(pk) AND attribute_exists(sk) AND #status = :assetStatus AND size(playerAssets.#userId.assets) < :maxAssets',
           UpdateExpression:
             'SET playerAssets.#userId.assets = list_append(playerAssets.#userId.assets, :newAsset)',
           ExpressionAttributeNames: {
@@ -216,9 +216,9 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
       await dynamodb.send(
         new UpdateCommand({
           TableName: resolveMatchTableName(),
-          Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
+          Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' },
           ConditionExpression:
-            'attribute_exists(PK) AND attribute_exists(SK) AND #status = :assetStatus',
+            'attribute_exists(pk) AND attribute_exists(sk) AND #status = :assetStatus',
           UpdateExpression: `REMOVE playerAssets.#userId.assets[${assetIndex}]`,
           ExpressionAttributeNames: {
             '#userId': userId,
@@ -256,7 +256,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
       await dynamodb.send(
         new UpdateCommand({
           TableName: resolveMatchTableName(),
-          Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
+          Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' },
           UpdateExpression: 'SET playerAssets.#userId.readyAt = :now',
           ExpressionAttributeNames: { '#userId': userId },
           ExpressionAttributeValues: { ':now': new Date().toISOString() },
@@ -327,10 +327,10 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
       await dynamodb.send(
         new UpdateCommand({
           TableName: tableName,
-          Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
+          Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' },
           UpdateExpression: `SET ${updateExpressions.join(', ')}`,
           ConditionExpression:
-            'attribute_exists(PK) AND attribute_exists(SK) AND #status = :expectedStatus',
+            'attribute_exists(pk) AND attribute_exists(sk) AND #status = :expectedStatus',
           ExpressionAttributeNames: expressionAttributeNames,
           ExpressionAttributeValues: expressionAttributeValues,
         })
@@ -360,9 +360,9 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
       await dynamodb.send(
         new UpdateCommand({
           TableName: resolveMatchTableName(),
-          Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
+          Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' },
           UpdateExpression: 'SET #status = :status',
-          ConditionExpression: 'attribute_exists(PK) AND attribute_exists(SK)',
+          ConditionExpression: 'attribute_exists(pk) AND attribute_exists(sk)',
           ExpressionAttributeNames: { '#status': 'status' },
           ExpressionAttributeValues: {
             ':status': 'asset_selection',
@@ -400,15 +400,16 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
 
     if (params.settlementExecutionArn) {
       expressions.push('matchSettlementExecutionArn = :executionArn');
-      expressionAttributeValues[':executionArn'] = params.settlementExecutionArn;
+      expressionAttributeValues[':executionArn'] =
+        params.settlementExecutionArn;
     }
 
     await dynamodb.send(
       new UpdateCommand({
         TableName: resolveMatchTableName(),
-        Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
+        Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' },
         UpdateExpression: `SET ${expressions.join(', ')}`,
-        ConditionExpression: 'attribute_exists(PK) AND attribute_exists(SK)',
+        ConditionExpression: 'attribute_exists(pk) AND attribute_exists(sk)',
         ExpressionAttributeValues: expressionAttributeValues,
       })
     );
@@ -427,7 +428,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
       await dynamodb.send(
         new UpdateCommand({
           TableName: resolveMatchTableName(),
-          Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
+          Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' },
           UpdateExpression: `SET playerAssets.#userId.assets[${assetIndex}].initialPrice = :initialPrice, playerAssets.#userId.assets[${assetIndex}].shares = :shares`,
           ExpressionAttributeNames: {
             '#userId': userId,
@@ -460,12 +461,15 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     }
   };
 
-  const countInProgressMatchesForUser = async (userId: string): Promise<number> => {
+  const countInProgressMatchesForUser = async (
+    userId: string
+  ): Promise<number> => {
     try {
       const { Count } = await dynamodb.send(
         new ScanCommand({
           TableName: resolveMatchTableName(),
-          FilterExpression: '#entity = :match AND SK = :details AND contains(#players, :uid) AND #status = :inprog',
+          FilterExpression:
+            '#entity = :match AND sk = :details AND contains(#players, :uid) AND #status = :inprog',
           ExpressionAttributeNames: {
             '#entity': 'EntityType',
             '#players': 'players',
@@ -479,13 +483,17 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
           },
           Select: 'COUNT',
         })
-      )
-      return Count ?? 0
+      );
+      return Count ?? 0;
     } catch (error) {
-      logger.error({ error, userId, msg: 'Error counting in-progress matches for user' })
-      return 0
+      logger.error({
+        error,
+        userId,
+        msg: 'Error counting in-progress matches for user',
+      });
+      return 0;
     }
-  }
+  };
 
   const completeMatchWithOutcome = async (
     matchId: string,
@@ -542,14 +550,14 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
       await dynamodb.send(
         new UpdateCommand({
           TableName: tableName,
-          Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
+          Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' },
           UpdateExpression: `SET ${setExpressions.join(', ')}${
             removeExpressions.length > 0
               ? ` REMOVE ${removeExpressions.join(', ')}`
               : ''
           }`,
           ConditionExpression:
-            'attribute_exists(PK) AND attribute_exists(SK) AND #status = :expectedStatus',
+            'attribute_exists(pk) AND attribute_exists(sk) AND #status = :expectedStatus',
           ExpressionAttributeNames: expressionAttributeNames,
           ExpressionAttributeValues: expressionAttributeValues,
         })
