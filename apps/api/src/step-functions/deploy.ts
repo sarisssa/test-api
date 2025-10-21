@@ -44,7 +44,9 @@ const AWS_ENV = {
 
 const HANDLERS: HandlerSpec[] = [
   { handler: 'compute-outcome', functionName: 'match-compute-outcome', envVar: 'MATCH_COMPUTE_OUTCOME_FN_ARN' },
-  { handler: 'broadcast-completion', functionName: 'match-broadcast-completion', envVar: 'MATCH_BROADCAST_COMPLETION_FN_ARN' }
+  { handler: 'broadcast-completion', functionName: 'match-broadcast-completion', envVar: 'MATCH_BROADCAST_COMPLETION_FN_ARN' },
+  { handler: 'price-oracle', functionName: 'price-oracle', envVar: 'PRICE_ORACLE_FN_ARN' },
+  { handler: 'on-price-updated', functionName: 'on-price-updated', envVar: 'PRICE_STREAM_FN_ARN' }
 ]
 
 async function run(cmd: string, args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
@@ -137,6 +139,80 @@ async function deployLambda(spec: HandlerSpec): Promise<string> {
   return arnFor(spec.functionName)
 }
 
+async function createScheduleIfRequested(priceOracleArn: string) {
+  if ((process.env.CREATE_PRICE_SCHEDULE ?? 'false').toLowerCase() !== 'true') return
+  const scheduleName = process.env.PRICE_SCHEDULE_NAME ?? 'price-oracle-10s'
+  const scheduleGroup = process.env.PRICE_SCHEDULE_GROUP ?? 'default'
+  const roleArn = process.env.SCHEDULER_ROLE_ARN ?? 'arn:aws:iam::000000000000:role/scheduler-role'
+  const input = JSON.stringify({})
+  // Try to create or update schedule
+  try {
+    await run('aws', [
+      'scheduler', 'create-schedule',
+      '--name', scheduleName,
+      '--group-name', scheduleGroup,
+      '--schedule-expression', 'rate(10 seconds)',
+      '--flexible-time-window', 'Mode=OFF',
+      '--target', `Arn=${priceOracleArn},RoleArn=${roleArn},Input='${input}'`,
+      '--region', REGION,
+      '--endpoint-url', ENDPOINT
+    ], { env: AWS_ENV })
+    console.log(`[INFO] Created EventBridge schedule ${scheduleName}`)
+  } catch (e) {
+    console.warn('[WARN] create-schedule failed (may already exist):', (e as Error).message)
+    try {
+      await run('aws', [
+        'scheduler', 'update-schedule',
+        '--name', scheduleName,
+        '--group-name', scheduleGroup,
+        '--schedule-expression', 'rate(10 seconds)',
+        '--flexible-time-window', 'Mode=OFF',
+        '--target', `Arn=${priceOracleArn},RoleArn=${roleArn},Input='${input}'`,
+        '--region', REGION,
+        '--endpoint-url', ENDPOINT
+      ], { env: AWS_ENV })
+      console.log(`[INFO] Updated EventBridge schedule ${scheduleName}`)
+    } catch (e2) {
+      console.warn('[WARN] update-schedule failed:', (e2 as Error).message)
+    }
+  }
+}
+
+async function enableStreamMappingIfRequested(priceStreamArn: string) {
+  if ((process.env.ENABLE_PRICE_STREAM ?? 'false').toLowerCase() !== 'true') return
+  const table = process.env.WAGE_TABLE_NAME ?? 'WageTable'
+  try {
+    await run('aws', [
+      'dynamodb', 'update-table', '--table-name', table,
+      '--stream-specification', 'StreamEnabled=true,StreamViewType=NEW_AND_OLD_IMAGES',
+      '--region', REGION, '--endpoint-url', ENDPOINT
+    ], { env: AWS_ENV })
+  } catch (e) {
+    console.warn('[WARN] update-table (enable streams) failed (may already be enabled):', (e as Error).message)
+  }
+  let streamArn = ''
+  try {
+    const out = await run('aws', ['dynamodb', 'describe-table', '--table-name', table, '--query', 'Table.LatestStreamArn', '--output', 'text', '--region', REGION, '--endpoint-url', ENDPOINT], { env: AWS_ENV })
+    streamArn = out.trim()
+  } catch (e) {
+    console.warn('[WARN] describe-table for stream ARN failed:', (e as Error).message)
+    return
+  }
+  if (!streamArn) return
+  try {
+    await run('aws', [
+      'lambda', 'create-event-source-mapping',
+      '--function-name', 'on-price-updated',
+      '--event-source-arn', streamArn,
+      '--starting-position', 'LATEST',
+      '--region', REGION, '--endpoint-url', ENDPOINT
+    ], { env: AWS_ENV })
+    console.log('[INFO] Created event source mapping for on-price-updated')
+  } catch (e) {
+    console.warn('[WARN] create-event-source-mapping failed (may exist):', (e as Error).message)
+  }
+}
+
 async function upsertEnvVar(filePath: string, key: string, value: string) {
   let contents = ''
   try {
@@ -183,6 +259,13 @@ async function main() {
     console.log(`[SUCCESS] ${spec.handler} deployed. ARN: ${arn}`)
     await upsertEnvVar(ENV_FILE, spec.envVar, arn)
     await upsertEnvVar(ENV_EXAMPLE_FILE, spec.envVar, arn)
+
+    if (spec.handler === 'price-oracle') {
+      await createScheduleIfRequested(arn)
+    }
+    if (spec.handler === 'on-price-updated') {
+      await enableStreamMappingIfRequested(arn)
+    }
   }
 
   console.log('\n[INFO] Updated files:')

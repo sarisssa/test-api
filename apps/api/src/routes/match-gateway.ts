@@ -1,5 +1,4 @@
-import { SocketStream } from '@fastify/websocket';
-import { FastifyInstance } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { addConnection, removeConnection } from '../services/connection-manager.js';
 import { parseAndHandle } from '../ws/actions.js';
@@ -13,13 +12,23 @@ export default async function matchGatewayRoutes(fastify: FastifyInstance) {
       {
         websocket: true,
       } as const,
-      async (connection: SocketStream, req) => {
+      async (connection: any, req: any) => {
         const connectionId = uuidv4();
 
-        (connection.socket as any).id = connectionId; // Use 'as any' or proper type augmentation
+        const ws = connection && 'socket' in connection ? connection.socket : connection;
+
+        if (!ws) {
+          fastify.log.error(
+            { connectionId },
+            'WebSocket upgrade provided no socket instance'
+          );
+          return;
+        }
+
+        (ws as any).id = connectionId; // Use 'as any' or proper type augmentation
 
         // Register the connection in the local Fastify instance
-        addConnection(connectionId, connection.socket as any);
+        addConnection(connectionId, ws as any);
 
         // Handshake auth: accept JWT via query (?token=) or Authorization header
         let userId: string | null = null
@@ -32,14 +41,14 @@ export default async function matchGatewayRoutes(fastify: FastifyInstance) {
           userId = decoded.userId
         } catch (err) {
           fastify.log.warn({ err, connectionId }, 'WebSocket auth failed')
-          connection.socket.send(JSON.stringify({ type: 'error', message: 'unauthorized' }))
-          connection.socket.close()
+          ws.send(JSON.stringify({ type: 'error', message: 'unauthorized' }))
+          ws.close()
           return
         }
 
         fastify.log.info({ connectionId, userId }, 'Client connected to matchmaking')
 
-        connection.socket.on('message', async message => {
+        ws.on('message', async (message: any) => {
           fastify.log.info({
             rawMessage: message.toString(),
             msg: 'Received raw message',
@@ -52,7 +61,7 @@ export default async function matchGatewayRoutes(fastify: FastifyInstance) {
               data
             )
             if (result) {
-              connection.socket.send(JSON.stringify(result))
+              ws.send(JSON.stringify(result))
             }
           } catch (error) {
             if (error instanceof Error) {
@@ -77,7 +86,7 @@ export default async function matchGatewayRoutes(fastify: FastifyInstance) {
               );
             }
 
-            connection.socket.send(
+            ws.send(
               JSON.stringify({
                 type: 'error',
                 message: 'Failed to process request',
@@ -86,15 +95,15 @@ export default async function matchGatewayRoutes(fastify: FastifyInstance) {
           }
         });
 
-        connection.socket.on('error', error => {
+        ws.on('error', (error: any) => {
           fastify.log.error(
             { error: error, connectionId: connectionId },
             'WebSocket error'
           );
         });
 
-        connection.socket.on('close', async () => {
-          const currentConnectionId = (connection.socket as any).id; // Retrieve the ID
+        ws.on('close', async () => {
+          const currentConnectionId = (ws as any).id; // Retrieve the ID
 
           // Remove the connection from the local map on socket close
           removeConnection(currentConnectionId);

@@ -13,6 +13,7 @@ import {
 } from '../types/match.js';
 import { MatchResult } from '../types/matchmaking.js';
 import { collectUniqueTickers } from '../utils/match-utils.js';
+import { createInPlayRepository } from '../repositories/inplay-repository.js';
 import {
   canPlayerReadyUp,
   validateAssetSelection,
@@ -407,6 +408,25 @@ export const handleMatchStart = async (
       fetchedPriceData as AssetPriceData
     );
 
+    // Register in-play tickers for centralized pricing and fan-out
+    try {
+      const registry = createInPlayRepository(fastify)
+      const tickersWithTypes: { assetType: 'STOCK' | 'CRYPTO' | 'COMMODITY'; symbol: string }[] = []
+      Object.values(existingMatch.playerAssets ?? {}).forEach(sel => {
+        sel.assets.forEach(a => tickersWithTypes.push({ assetType: a.assetType, symbol: a.ticker }))
+      })
+      const seen = new Set<string>()
+      const dedup = tickersWithTypes.filter(t => {
+        const k = `${t.assetType}#${t.symbol}`
+        if (seen.has(k)) return false
+        seen.add(k)
+        return true
+      })
+      await registry.registerTickersForMatch(matchId, dedup)
+    } catch (err) {
+      fastify.log.warn({ err, matchId, msg: 'Failed to register in-play tickers' })
+    }
+
     try {
       await fastify.repositories.match.transitionMatchToInProgress(matchId, {
         matchStartTimeIso,
@@ -558,6 +578,28 @@ export const handlePlayerForfeit = async (
         winnerId,
         loserId: userId,
       });
+
+    // Deregister in-play tickers for this match
+    try {
+      const registry = createInPlayRepository(fastify)
+      const current = await fastify.repositories.match.getMatch(matchId)
+      if (current) {
+        const tickers: { assetType: 'STOCK' | 'CRYPTO' | 'COMMODITY'; symbol: string }[] = []
+        Object.values(current.playerAssets ?? {}).forEach(sel => {
+          sel.assets.forEach(a => tickers.push({ assetType: a.assetType, symbol: a.ticker }))
+        })
+        const seen = new Set<string>()
+        const dedup = tickers.filter(t => {
+          const k = `${t.assetType}#${t.symbol}`
+          if (seen.has(k)) return false
+          seen.add(k)
+          return true
+        })
+        await registry.deregisterTickersForMatch(matchId, dedup)
+      }
+    } catch (err) {
+      fastify.log.warn({ err, matchId, msg: 'Failed to deregister in-play tickers (forfeit)' })
+    }
 
     if (updatedMatch) {
       await broadcastToMatch(fastify, updatedMatch.matchId, {
