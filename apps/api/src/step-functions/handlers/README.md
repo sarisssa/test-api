@@ -46,7 +46,7 @@ The settlement workflow consists of:
 **Logic:**
 1. Fetch match from DynamoDB
 2. Collect all asset tickers from both players
-3. Fetch current prices for all tickers from DynamoDB (`ASSET#<type>#<ticker>`)
+3. Fetch current prices for all tickers from DynamoDB (`pk = ASSET#<ticker>, sk ∈ {METADATA, PRICE}`)
 4. Calculate portfolio total for each player: `Σ(shares × currentPrice)`
 5. Calculate percentage returns: `((finalValue - 100000) / 100000) × 100`
 6. Determine winner by highest return (tie → lexicographic player ID)

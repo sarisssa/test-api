@@ -174,7 +174,7 @@ These scenarios mirror the connection-lifecycle and broadcast guarantees called 
 1. Ready both players (`{"action":"ready_check", ...}`) and verify `match_started` broadcast includes initial prices/shares.  
    DynamoDB item must transition to `status = in_progress`.
 2. Run the match processor locally (`npm run dev:match-processor -w match-processor`).  
-   - Check it logs active matches, calls Twelve Data (or mock), and updates DynamoDB PK `ASSET#`.
+   - Check it logs active matches, calls Twelve Data (or mock), and updates DynamoDB items with `pk = ASSET#<ticker>` and `sk = PRICE`.
    - Zero prices from seed data are treated as not fresh; the first run fetches real prices before caching.
    - Confirm future broadcasts emit `price_update` snapshots (after implementation).
 
