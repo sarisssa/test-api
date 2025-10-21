@@ -69,7 +69,7 @@ const buildTwilioStub = (fastify: FastifyInstance): Twilio => {
   } as unknown as Twilio;
 };
 
-export default fp(async fastify => {
+export default fp(async (fastify: FastifyInstance) => {
   const useStub =
     (fastify.config.USE_TWILIO_STUB ?? 'false').toLowerCase() === 'true';
 

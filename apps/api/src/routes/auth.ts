@@ -73,8 +73,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
         const verifyResult = await verifyOtp(
           fastify,
           phoneNumber,
-          code,
-          request
+          code
         );
 
         reply.send({
@@ -133,7 +132,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       try {
         const { refreshToken } = request.body;
-        const result = await refreshAuthTokens(fastify, refreshToken, request);
+        const result = await refreshAuthTokens(fastify, refreshToken);
 
         reply.send({
           message: 'Tokens refreshed successfully',
