@@ -91,9 +91,7 @@ async function fetchMatch(
 }
 
 /**
- * Fetch current asset price from DynamoDB.
- * Supports both the current schema (pk=ASSET#<ticker>, sk=METADATA|PRICE)
- * and the legacy schema (pk=ASSET#<assetType>, sk=<ticker>).
+ * Fetch current asset price from DynamoDB (pk=ASSET#<ticker>, sk=METADATA|PRICE).
  */
 async function fetchAssetPrice(tableName: string, ticker: string): Promise<number | null> {
   const normalized = ticker.toUpperCase()
@@ -103,15 +101,6 @@ async function fetchAssetPrice(tableName: string, ticker: string): Promise<numbe
     { pk: `ASSET#${normalized}`, sk: 'METADATA', label: 'metadata' },
     { pk: `ASSET#${normalized}`, sk: 'PRICE', label: 'price' },
   ]
-
-  const legacyAssetTypes = ['STOCK', 'CRYPTO', 'COMMODITY']
-  legacyAssetTypes.forEach(assetType => {
-    keyAttempts.push({
-      pk: `ASSET#${assetType}`,
-      sk: normalized,
-      label: `legacy-${assetType.toLowerCase()}`,
-    })
-  })
 
   for (const attempt of keyAttempts) {
     try {
