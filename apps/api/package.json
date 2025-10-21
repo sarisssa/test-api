@@ -26,7 +26,8 @@
     "tsx": "^4.20.3",
     "twilio": "^5.7.3",
     "uuid": "^11.1.0",
-    "wage-shared": "*"
+    "wage-shared": "*",
+    "zod": "^3.24.1"
   },
   "type": "module",
   "scripts": {
@@ -47,6 +48,9 @@
     "create-test-players": "tsx src/scripts/create-test-players.ts",
     "setup:step-functions": "tsx src/scripts/setup-step-function.ts",
     "deploy:lambdas": "tsx src/step-functions/deploy.ts",
+    "deploy:lambdas:all": "tsx src/step-functions/deploy.ts compute-outcome broadcast-completion price-oracle on-price-updated",
+    "deploy:lambdas:price": "CREATE_PRICE_SCHEDULE=true ENABLE_PRICE_STREAM=true tsx src/step-functions/deploy.ts price-oracle on-price-updated",
+    "invoke:price-oracle": "tsx src/scripts/invoke-price-oracle.ts",
     "system:test": "tsx src/scripts/system-check.ts"
   },
   "devDependencies": {
