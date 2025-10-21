@@ -284,7 +284,7 @@ async function seedAllAssets() {
       if (!metadataBySymbol.has(symbol)) {
         addMetadata({
           pk: `ASSET#${symbol}`,
-          sk: `METADATA#${symbol}`,
+          sk: 'METADATA',
           EntityType: 'Asset',
           AssetType: 'STOCK',
           Symbol: symbol,
@@ -299,8 +299,8 @@ async function seedAllAssets() {
     for (const asset of CRYPTO_ASSETS) {
       if (!metadataBySymbol.has(asset.symbol)) {
         addMetadata({
-          pk: `ASSET#${asset.symbol}`,
-          sk: `METADATA#${asset.symbol}`,
+          PK: `ASSET#${asset.symbol}`,
+          SK: `METADATA#${asset.symbol}`,
           EntityType: 'Asset',
           AssetType: 'CRYPTO',
           Symbol: asset.symbol,
@@ -317,7 +317,7 @@ async function seedAllAssets() {
       if (!metadataBySymbol.has(asset.symbol)) {
         addMetadata({
           pk: `ASSET#${asset.symbol}`,
-          sk: `METADATA#${asset.symbol}`,
+          sk: 'METADATA',
           EntityType: 'Asset',
           AssetType: 'COMMODITY',
           Symbol: asset.symbol,

@@ -52,9 +52,10 @@ export const assetSearchQueryJsonSchema = {
       enum: ['STOCK', 'CRYPTO', 'COMMODITY'],
     },
     limit: {
-      type: 'number',
-      minimum: 1,
-      maximum: 100,
+      anyOf: [
+        { type: 'number', minimum: 1, maximum: 100 },
+        { type: 'string', pattern: '^[0-9]{1,3}$' }
+      ],
     },
   },
   additionalProperties: false,

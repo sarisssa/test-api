@@ -12,26 +12,52 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
     assetType?: AssetType,
     limit: number = 20
   ): Promise<DynamoDBAssetItem[]> => {
+    const normalizedTerm = (searchTerm ?? '').trim();
+    if (!normalizedTerm) {
+      return [];
+    }
+
     const params: ScanCommand['input'] = {
       TableName: fastify.config.DYNAMODB_TABLE_NAME,
-      FilterExpression: 'contains(sk, :s) OR contains(#n, :s)',
+      FilterExpression:
+        '#entity = :assetEntity AND (contains(#name, :search) OR contains(#symbol, :symbolSearch))',
       ExpressionAttributeNames: {
-        '#n': 'name',
+        '#name': 'name',
+        '#symbol': 'Symbol',
+        '#entity': 'EntityType',
       },
       ExpressionAttributeValues: {
-        ':s': searchTerm,
+        ':search': normalizedTerm,
+        ':symbolSearch': normalizedTerm.toUpperCase(),
+        ':assetEntity': 'Asset',
       },
-      Limit: limit,
     };
 
     if (assetType) {
-      params.FilterExpression += ' AND AssetType = :at';
-      params.ExpressionAttributeValues![':at'] = assetType;
+      params.FilterExpression += ' AND AssetType = :assetType';
+      params.ExpressionAttributeValues![':assetType'] = assetType;
     }
 
+    const items: DynamoDBAssetItem[] = [];
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+
     try {
-      const { Items } = await fastify.dynamodb.send(new ScanCommand(params));
-      return (Items || []) as DynamoDBAssetItem[];
+      do {
+        const { Items, LastEvaluatedKey } = await fastify.dynamodb.send(
+          new ScanCommand({
+            ...params,
+            ExclusiveStartKey: exclusiveStartKey,
+          })
+        );
+
+        if (Items && Items.length > 0) {
+          items.push(...(Items as DynamoDBAssetItem[]));
+        }
+
+        exclusiveStartKey = LastEvaluatedKey;
+      } while (items.length < limit && exclusiveStartKey);
+
+      return items.slice(0, limit);
     } catch (error) {
       logger.error({
         error,
@@ -48,8 +74,8 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
   ): Promise<DynamoDBAssetItem | null> => {
     const upperTicker = ticker.toUpperCase();
     const key = {
-      pk: `ASSET#${upperTicker}`,
-      sk: 'METADATA',
+      PK: `ASSET#${upperTicker}`,
+      SK: 'METADATA',
     };
 
     try {
@@ -62,6 +88,16 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
 
       if (result.Item) {
         return result.Item as DynamoDBAssetItem;
+      }
+      // fallback to legacy key casing if item uses pk/sk
+      const legacyResult = await fastify.dynamodb.send(
+        new GetCommand({
+          TableName: fastify.config.DYNAMODB_TABLE_NAME,
+        Key: { pk: `ASSET#${upperTicker}`, sk: 'METADATA' },
+        })
+      );
+      if (legacyResult.Item) {
+        return legacyResult.Item as DynamoDBAssetItem;
       }
       return null;
     } catch (error) {
@@ -151,8 +187,8 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
         new UpdateCommand({
           TableName: fastify.config.DYNAMODB_TABLE_NAME,
           Key: {
-            pk: `ASSET#${ticker.toUpperCase()}`,
-            sk: 'METADATA',
+            PK: `ASSET#${ticker.toUpperCase()}`,
+            SK: 'METADATA',
           },
           UpdateExpression: 'SET currentPrice = :price, lastUpdated = :updated',
           ExpressionAttributeValues: {

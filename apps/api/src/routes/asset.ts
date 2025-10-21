@@ -243,6 +243,7 @@ export default async function assetRoutes(fastify: FastifyInstance) {
           200: {
             description: 'Asset information',
             type: 'object',
+            additionalProperties: true,
           },
           404: {
             description: 'Asset not found',
