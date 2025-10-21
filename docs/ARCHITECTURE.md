@@ -17,7 +17,7 @@
 
 ## 3. Data & State
 - **DynamoDB (`WageTable`)**  
-  Match state, portfolios, invites, perks, etc. Code expects attribute casing `PK`/`SK`, entity-style partition keys (`MATCH#123`). Terraform currently provisions `pk`/`sk`; align casing before next deployment. Repositories rely on optimistic locking via conditional expressions but hard-code table name `"WageTable"` instead of `fastify.config.WAGE_TABLE_NAME`.
+  Match state, portfolios, invites, perks, etc. Runtime now dual-writes both `pk/sk` and `PK/SK` so existing lowercase tables remain compatible while we migrate infra. Terraform still provisions lowercase keys; converge on a single schema once deployments are stable. Repositories read the table name from config and only fall back to `"WageTable"` as a last resort.
 - **Redis (ElastiCache)**  
   Primary coordination layer. Used for matchmaking queue (`zset` + Lua script), player/connection metadata, Redis pub/sub for WebSocket fan-out, job queue list for the in-process worker, and research ticker subscriptions.
 - **S3**  
@@ -32,7 +32,7 @@
   3. In-process worker (`startMatchmakingWorker`) BRPOPs jobs, matches players (Lua script ensures atomic pairing).  
   4. `createMatch` seeds Redis + DynamoDB, sets 2-min asset selection window, notifies players over Redis pub/sub.  
   5. Players select up to 3 assets; ready check transitions match to `in_progress` after fetching initial quotes.  
-  6. Match processor periodically refreshes asset prices, updating DynamoDB items.
+  6. Ongoing pricing: the Fargate match processor loop polls TwelveData, while the scheduled `price-oracle` Lambda writes fresh prices into DynamoDB and a DynamoDB Stream triggers `on-price-updated` to fan the new values into live matches.
 - **Research WebSocket (`/research-ws/:ticker`)**  
   Lightweight fan-out managed entirely in-memory per task with Redis sets for ticker backpressure.
 
@@ -48,12 +48,12 @@
 
 ## 6. Identified Inconsistencies & Risks
 - **Table name & schema drift**  
-  - Code hard-codes `TableName: 'WageTable'` in repositories; env var is ignored.  
-  - Terraform creates `${project}-main-${env}` with lowercase `pk`/`sk`; Step Functions expects yet another key (`sk = "METADATA"`).  
-  - Risk: staging/prod deploys fail or silently fork data models.
-- **Redis client instantiation**  
-  - `createRedisClient` uses `new Redis.Redis`, which is invalid with ESM default import. Ensure runtime build still boots; patch to `new Redis(url, options)`.  
-  - Missing shutdown handling; multiple clients per Fargate task (Fastify plugin + pub/sub + worker).
+  - Most repositories now honour `fastify.config.WAGE_TABLE_NAME` / `DYNAMODB_TABLE_NAME`, but helper scripts still fall back to `'WageTable'`; align IaC + env so the default is never relied on.  
+  - Terraform creates `${project}-main-${env}` with lowercase `pk`/`sk`; settlement + price stream handlers dual-write both casings today. Pick a single schema once deployments stabilise.  
+  - Risk: staging/prod deploys fail or silently fork data models if infra and runtime diverge.
+- **Redis client lifecycle**  
+  - Helper now wraps the ESM default correctly, but the matchmaking worker still creates its own long-lived client; wire process signal handlers back in so tasks exit cleanly.  
+  - Review total Redis connections per task (Fastify plugin + pub/sub + worker) before scaling out.
 - **WebSocket scaling**  
   - Connection maps are in-memory per task; Redis only stores `player:{id}` -> connectionId. On disconnect, Redis cleanup never happens, leaving stale connection IDs.  
   - No cross-task delivery guarantee: pub/sub receivers ignore messages when connection lives elsewhere.  

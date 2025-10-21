@@ -39,8 +39,10 @@ LAMBDA_LOCALSTACK_HOST=localstack-main.orb.local \
 This bundles and deploys:
 - `match-compute-outcome` → sets `MATCH_COMPUTE_OUTCOME_FN_ARN`
 - `match-broadcast-completion` → sets `MATCH_BROADCAST_COMPLETION_FN_ARN`
+- `price-oracle` → sets `PRICE_ORACLE_FN_ARN` and (when `CREATE_PRICE_SCHEDULE=true`) provisions an EventBridge schedule that invokes it every 10 seconds.
+- `on-price-updated` → sets `PRICE_STREAM_FN_ARN` and, with `ENABLE_PRICE_STREAM=true`, turns on DynamoDB Streams + the Lambda event source mapping so price changes flow back into matches.
 
-Both apps/api/.env and apps/api/.env.example are updated with the ARNs.
+Both `apps/api/.env` and `apps/api/.env.example` are updated with the ARNs. If you only need to refresh the price pipeline, run `CREATE_PRICE_SCHEDULE=true ENABLE_PRICE_STREAM=true npm run -w api deploy:lambdas:price`.
 
 2) Create or update the Step Functions state machine
 
@@ -52,7 +54,7 @@ Copy the printed ARN into `MATCH_SETTLEMENT_STATE_MACHINE_ARN` in `apps/api/.env
 
 3) Seed DynamoDB and price rows
 
-- Run `npm run setup:system -w api`. This is idempotent: it creates the Wage table if needed, ensures the state machine exists, and seeds price rows for stock, crypto, and commodity tickers so the match processor can run 24/7.
+- Run `npm run setup:system -w api`. This is idempotent: it creates the Wage table if needed, ensures the state machine exists, seeds price rows for stock, crypto, and commodity tickers so the match processor can run 24/7, and upserts asset metadata using both `pk/sk` and `PK/SK` so older data remains compatible.
 - Optional follow-up: `npm run create-table -w api` if you need to re-create the table manually.
 
 4) Verify base env for local dev
@@ -61,6 +63,7 @@ Copy the printed ARN into `MATCH_SETTLEMENT_STATE_MACHINE_ARN` in `apps/api/.env
 - `DYNAMODB_URL=http://localhost:4566` (or same custom host)
 - `WAGE_TABLE_NAME=WageTable`
 - `REDIS_URL=redis://127.0.0.1:6379`
+- `PRICE_ORACLE_FN_ARN` and `PRICE_STREAM_FN_ARN` populated by `npm run -w api deploy:lambdas`
 
 Notes
 - The internal settlement worker runs as a safety net and finalizes time‑expired matches if a winner is missing. With Step Functions configured, it will typically find nothing to do.
@@ -72,6 +75,8 @@ Notes
 
 - Deploy settlement Lambdas to LocalStack and update env files:
   - `npm run -w api deploy:lambdas`
+- Refresh only the price pipeline (EventBridge schedule + DynamoDB stream mapping):
+  - `CREATE_PRICE_SCHEDULE=true ENABLE_PRICE_STREAM=true npm run -w api deploy:lambdas:price`
 - Create/update Step Functions state machine (reads env ARNs):
   - `npm run setup:step-functions -w api`
 - Provision table + state machine + seed price rows:
@@ -81,6 +86,8 @@ Notes
   - Match processor: `npm run dev:match-processor`
 - Run end‑to‑end system check:
   - `npm run system:test -w api`
+- Invoke the price oracle Lambda once (updates monitored tickers immediately):
+  - `npm run invoke:price-oracle -w api`
 - Inspect a match record quickly:
   - `npx tsx src/scripts/debug-match.ts <matchId>`
 
@@ -243,6 +250,7 @@ Each suite should run via `npm run test:<name>` and be wired into CI (see `docs/
   - Create it: `npm run create-table -w api` (with `DYNAMODB_URL=http://localhost:4566`).
 - Price remains `$0` after seeding:
   - First run will fetch and cache non‑zero prices; verify match‑processor logs show price updates, or set `USE_PRICE_SERVICE_STUB=true` for entirely local runs.
+  - After deploying price Lambdas, run `CREATE_PRICE_SCHEDULE=true ENABLE_PRICE_STREAM=true npm run -w api deploy:lambdas:price` followed by `npm run invoke:price-oracle -w api` to populate prices immediately and confirm the EventBridge schedule + DynamoDB stream mapping are active.
   - Ensure `TWELVE_DATA_API_KEY` is not a placeholder (e.g., `dummy` or `replace-with-real-key`); the service falls back to the stub when the key is missing.
 
 ### Match IDs in Logs
