@@ -1,9 +1,6 @@
 export interface DynamoDBAssetItem {
-  // Allow both legacy lowercase and canonical uppercase keys
-  pk?: `ASSET#${string}`;
-  sk?: string;
-  PK?: `ASSET#${string}`;
-  SK?: string;
+  pk: `ASSET#${string}`;
+  sk: 'METADATA';
   EntityType: 'Asset';
   AssetType: 'STOCK' | 'CRYPTO' | 'COMMODITY';
   Symbol: string;

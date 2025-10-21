@@ -185,6 +185,7 @@ export default async function assetRoutes(fastify: FastifyInstance) {
           if (asset) {
             await fastify.repositories.asset.updateAssetPrice(
               upperSymbol,
+              asset.AssetType as AssetType,
               currentPrice,
               lastUpdated
             );

@@ -72,30 +72,22 @@ async function fetchPrices(symbols: string[]): Promise<Record<string, number>> {
 
 async function writePrice(assetType: AssetType, symbol: string, price: number): Promise<void> {
   const now = new Date().toISOString()
+  const upperSymbol = symbol.toUpperCase()
+
   await ddb.send(
     new UpdateCommand({
       TableName: TABLE,
-      Key: { pk: `ASSET#${assetType}`, sk: symbol },
-      UpdateExpression: 'SET currentPrice = :p, lastUpdated = :ts',
-      ExpressionAttributeValues: { ':p': price, ':ts': now },
+      Key: { pk: `ASSET#${upperSymbol}`, sk: 'PRICE' },
+      UpdateExpression: 'SET currentPrice = :p, lastUpdated = :ts, assetType = :t, symbol = :s',
+      ExpressionAttributeValues: { ':p': price, ':ts': now, ':t': assetType, ':s': upperSymbol },
     })
   )
-  // Per-symbol price record (used by newer readers)
   await ddb.send(
     new UpdateCommand({
       TableName: TABLE,
-      Key: { pk: `ASSET#${symbol}`, sk: 'PRICE' },
-      UpdateExpression: 'SET currentPrice = :p, lastUpdated = :ts, assetType = :t, symbol = :s, PK = :legacyPkPrice, SK = :legacySkPrice',
-      ExpressionAttributeValues: { ':p': price, ':ts': now, ':t': assetType, ':s': symbol, ':legacyPkPrice': `ASSET#${symbol}`, ':legacySkPrice': 'PRICE' },
-    })
-  )
-  // Ensure metadata row stays in sync so legacy consumers (and system-check) see live prices
-  await ddb.send(
-    new UpdateCommand({
-      TableName: TABLE,
-      Key: { pk: `ASSET#${symbol}`, sk: 'METADATA' },
-      UpdateExpression: 'SET currentPrice = :p, lastUpdated = :ts, PK = :legacyPkMeta, SK = :legacySkMeta',
-      ExpressionAttributeValues: { ':p': price, ':ts': now, ':legacyPkMeta': `ASSET#${symbol}`, ':legacySkMeta': 'METADATA' },
+      Key: { pk: `ASSET#${upperSymbol}`, sk: 'METADATA' },
+      UpdateExpression: 'SET currentPrice = :p, lastUpdated = :ts, AssetType = :t, Symbol = :s',
+      ExpressionAttributeValues: { ':p': price, ':ts': now, ':t': assetType, ':s': upperSymbol },
     })
   )
 }

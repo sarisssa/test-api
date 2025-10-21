@@ -7,6 +7,7 @@ const WAGE_TABLE_NAME = process.env.WAGE_TABLE_NAME || 'WageTable'
 export interface AssetPriceRecord {
   currentPrice?: number
   lastUpdated?: string
+  assetType?: string
 }
 
 export interface PriceRunMetrics {
@@ -61,24 +62,45 @@ export const updateAssetPrice = async (
   symbol: string,
   currentPrice: number
 ): Promise<void> => {
-  try {
-    const updateParams = {
-      TableName: WAGE_TABLE_NAME,
-      Key: {
-        pk: `ASSET#${assetType}`,
-        sk: symbol
-      },
-      UpdateExpression: 'SET currentPrice = :price, lastUpdated = :lastUpdated',
-      ExpressionAttributeValues: {
-        ':price': currentPrice,
-        ':lastUpdated': new Date().toISOString()
-      }
-    }
+  const requestSymbol = symbol
+  const upperSymbol = symbol.toUpperCase()
+  const timestamp = new Date().toISOString()
 
-    await ddb.send(new UpdateCommand(updateParams))
-    console.log(`Successfully updated price for ${symbol}: $${currentPrice}`)
+  try {
+    await Promise.all([
+      ddb.send(
+        new UpdateCommand({
+          TableName: WAGE_TABLE_NAME,
+          Key: { pk: `ASSET#${upperSymbol}`, sk: 'PRICE' },
+          UpdateExpression:
+            'SET currentPrice = :price, lastUpdated = :lastUpdated, assetType = :assetType, symbol = :symbol',
+          ExpressionAttributeValues: {
+            ':price': currentPrice,
+            ':lastUpdated': timestamp,
+            ':assetType': assetType,
+            ':symbol': upperSymbol
+          }
+        })
+      ),
+      ddb.send(
+        new UpdateCommand({
+          TableName: WAGE_TABLE_NAME,
+          Key: { pk: `ASSET#${upperSymbol}`, sk: 'METADATA' },
+          UpdateExpression:
+            'SET currentPrice = :price, lastUpdated = :lastUpdated, AssetType = :assetType, Symbol = :symbol',
+          ExpressionAttributeValues: {
+            ':price': currentPrice,
+            ':lastUpdated': timestamp,
+            ':assetType': assetType,
+            ':symbol': upperSymbol
+          }
+        })
+      )
+    ])
+
+    console.log(`Successfully updated price for ${requestSymbol}: $${currentPrice}`)
   } catch (error) {
-    console.error(`Failed to update price for ${symbol}:`, error)
+    console.error(`Failed to update price for ${requestSymbol}:`, error)
     throw error
   }
 }
@@ -98,24 +120,45 @@ export const batchUpdateAssetPrices = async (
   console.log(`=== BATCH UPDATING ${priceUpdates.length} ASSET PRICES ===`)
 
   const updatePromises = priceUpdates.map(async ({ assetType, symbol, currentPrice }) => {
-    try {
-      const updateParams = {
-        TableName: WAGE_TABLE_NAME,
-        Key: {
-          pk: `ASSET#${assetType}`,
-          sk: symbol
-        },
-        UpdateExpression: 'SET currentPrice = :price, lastUpdated = :lastUpdated',
-        ExpressionAttributeValues: {
-          ':price': currentPrice,
-          ':lastUpdated': new Date().toISOString()
-        }
-      }
+    const requestSymbol = symbol
+    const upperSymbol = symbol.toUpperCase()
+    const timestamp = new Date().toISOString()
 
-      await ddb.send(new UpdateCommand(updateParams))
-      console.log(`Updated ${symbol}: $${currentPrice}`)
+    try {
+      await Promise.all([
+        ddb.send(
+          new UpdateCommand({
+            TableName: WAGE_TABLE_NAME,
+            Key: { pk: `ASSET#${upperSymbol}`, sk: 'PRICE' },
+            UpdateExpression:
+              'SET currentPrice = :price, lastUpdated = :lastUpdated, assetType = :assetType, symbol = :symbol',
+            ExpressionAttributeValues: {
+              ':price': currentPrice,
+              ':lastUpdated': timestamp,
+              ':assetType': assetType,
+              ':symbol': upperSymbol
+            }
+          })
+        ),
+        ddb.send(
+          new UpdateCommand({
+            TableName: WAGE_TABLE_NAME,
+            Key: { pk: `ASSET#${upperSymbol}`, sk: 'METADATA' },
+            UpdateExpression:
+              'SET currentPrice = :price, lastUpdated = :lastUpdated, AssetType = :assetType, Symbol = :symbol',
+            ExpressionAttributeValues: {
+              ':price': currentPrice,
+              ':lastUpdated': timestamp,
+              ':assetType': assetType,
+              ':symbol': upperSymbol
+            }
+          })
+        )
+      ])
+
+      console.log(`Updated ${requestSymbol}: $${currentPrice}`)
     } catch (error) {
-      console.error(`Failed to update ${symbol}:`, error)
+      console.error(`Failed to update ${requestSymbol}:`, error)
     }
   })
 
@@ -144,29 +187,47 @@ export const getAssetPriceRecords = async (
   const records: Record<string, AssetPriceRecord> = {}
 
   for (const { assetType, symbol } of assets) {
+    const requestSymbol = symbol
+    const upperSymbol = symbol.toUpperCase()
     try {
-      const getParams = {
-        TableName: WAGE_TABLE_NAME,
-        Key: {
-          pk: `ASSET#${assetType}`,
-          sk: symbol
-        }
-      }
+      const keyCandidates: Array<{ pk: string; sk: string }> = [
+        { pk: `ASSET#${upperSymbol}`, sk: 'PRICE' },
+        { pk: `ASSET#${upperSymbol}`, sk: 'METADATA' }
+      ]
 
-      const result = await ddb.send(new GetCommand(getParams))
-      if (result.Item) {
-        const { currentPrice, lastUpdated } = result.Item
-        records[symbol] = {
-          currentPrice: typeof currentPrice === 'number' ? currentPrice : undefined,
-          lastUpdated: typeof lastUpdated === 'string' ? lastUpdated : undefined
+      for (const candidate of keyCandidates) {
+        const result = await ddb.send(
+          new GetCommand({
+            TableName: WAGE_TABLE_NAME,
+            Key: candidate
+          })
+        )
+
+        if (!result.Item) {
+          continue
         }
-        continue
+
+        const { currentPrice, lastUpdated, assetType: storedType, AssetType: legacyType } =
+          result.Item
+        records[requestSymbol] = {
+          currentPrice: typeof currentPrice === 'number' ? currentPrice : undefined,
+          lastUpdated: typeof lastUpdated === 'string' ? lastUpdated : undefined,
+          assetType:
+            typeof storedType === 'string'
+              ? storedType
+              : typeof legacyType === 'string'
+              ? legacyType
+              : assetType
+        }
+        break
       }
     } catch (error) {
-      console.warn(`Failed to fetch price for ${symbol}:`, error)
+      console.warn(`Failed to fetch price for ${requestSymbol}:`, error)
     }
     // ensure record exists even if fetch failed
-    records[symbol] = {}
+    if (!records[requestSymbol]) {
+      records[requestSymbol] = {}
+    }
   }
 
   return records

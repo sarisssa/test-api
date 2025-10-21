@@ -439,7 +439,9 @@ export const handleMatchStart = async (
         error.name === 'ConditionalCheckFailedException'
       ) {
         // If match was already started by another process, fetch and return current state
-        const currentState = await fastify.repositories.match.getMatch(matchId);
+        const currentState = await fastify.repositories.match.getMatch(matchId, {
+          bypassCache: true,
+        });
         if (currentState?.status === 'in_progress') {
           fastify.log.info({
             matchId,

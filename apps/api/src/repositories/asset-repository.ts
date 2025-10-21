@@ -73,38 +73,18 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
     ticker: string
   ): Promise<DynamoDBAssetItem | null> => {
     const upperTicker = ticker.toUpperCase();
-    const lowercaseKey = {
-      pk: `ASSET#${upperTicker}`,
-      sk: 'METADATA',
-    };
 
     try {
-      // Prefer new lowercase schema
-      const lowercaseResult = await fastify.dynamodb.send(
+      const result = await fastify.dynamodb.send(
         new GetCommand({
           TableName: fastify.config.DYNAMODB_TABLE_NAME,
-          Key: lowercaseKey,
+          Key: {
+            pk: `ASSET#${upperTicker}`,
+            sk: 'METADATA',
+          },
         })
       );
-      if (lowercaseResult.Item) {
-        return lowercaseResult.Item as DynamoDBAssetItem;
-      }
-
-      // fallback to legacy key casing
-      const legacyKey = {
-        PK: `ASSET#${upperTicker}`,
-        SK: 'METADATA',
-      };
-      const legacyResult = await fastify.dynamodb.send(
-        new GetCommand({
-          TableName: fastify.config.DYNAMODB_TABLE_NAME,
-          Key: legacyKey,
-        })
-      );
-      if (legacyResult.Item) {
-        return legacyResult.Item as DynamoDBAssetItem;
-      }
-      return null;
+      return result.Item ? (result.Item as DynamoDBAssetItem) : null;
     } catch (error) {
       logger.error({
         error,
@@ -184,24 +164,44 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
 
   const updateAssetPrice = async (
     ticker: string,
+    assetType: AssetType,
     currentPrice: number,
     lastUpdated: string
   ): Promise<void> => {
+    const upperTicker = ticker.toUpperCase();
     try {
       await fastify.dynamodb.send(
         new UpdateCommand({
           TableName: fastify.config.DYNAMODB_TABLE_NAME,
           Key: {
-            pk: `ASSET#${ticker.toUpperCase()}`,
+            pk: `ASSET#${upperTicker}`,
             sk: 'METADATA',
           },
           UpdateExpression:
-            'SET currentPrice = :price, lastUpdated = :updated, PK = :legacyPk, SK = :legacySk',
+            'SET currentPrice = :price, lastUpdated = :updated, AssetType = :assetType, Symbol = :symbol',
           ExpressionAttributeValues: {
             ':price': currentPrice,
             ':updated': lastUpdated,
-            ':legacyPk': `ASSET#${ticker.toUpperCase()}`,
-            ':legacySk': 'METADATA',
+            ':assetType': assetType,
+            ':symbol': upperTicker,
+          },
+        })
+      );
+
+      await fastify.dynamodb.send(
+        new UpdateCommand({
+          TableName: fastify.config.DYNAMODB_TABLE_NAME,
+          Key: {
+            pk: `ASSET#${upperTicker}`,
+            sk: 'PRICE',
+          },
+          UpdateExpression:
+            'SET currentPrice = :price, lastUpdated = :updated, assetType = :assetType, symbol = :symbol',
+          ExpressionAttributeValues: {
+            ':price': currentPrice,
+            ':updated': lastUpdated,
+            ':assetType': assetType,
+            ':symbol': upperTicker,
           },
         })
       );

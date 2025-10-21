@@ -91,31 +91,36 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
   };
 
   const getMatch = async (
-    matchId: string
+    matchId: string,
+    options?: { bypassCache?: boolean }
   ): Promise<DynamoDBMatchItem | undefined> => {
+    const bypassCache = options?.bypassCache ?? false;
     try {
-      const cachedMatch = await redis.hgetall(REDIS_KEYS.MATCH(matchId));
-
-      if (
-        cachedMatch &&
-        cachedMatch.playerAssets &&
-        cachedMatch.players &&
-        cachedMatch.status
-      ) {
-        logger.info({ matchId, msg: 'Match found in Redis cache' });
-        return {
-          pk: `MATCH#${matchId}`,
-          sk: 'DETAILS',
-          EntityType: 'Match',
-          matchId,
-          players: JSON.parse(cachedMatch.players),
-          status: cachedMatch.status,
-          createdAt: cachedMatch.createdAt,
-          playerAssets: JSON.parse(cachedMatch.playerAssets),
-          assetSelectionStartedAt: cachedMatch.assetSelectionStartedAt,
-          assetSelectionEndedAt: cachedMatch.assetSelectionEndedAt || '',
-          matchStartedAt: cachedMatch.matchStartedAt || '',
-        } as DynamoDBMatchItem;
+      if (!bypassCache) {
+        const cachedMatch = await redis.hgetall(REDIS_KEYS.MATCH(matchId));
+        if (
+          cachedMatch &&
+          cachedMatch.playerAssets &&
+          cachedMatch.players &&
+          cachedMatch.status
+        ) {
+          logger.info({ matchId, msg: 'Match found in Redis cache' });
+          return {
+            pk: `MATCH#${matchId}`,
+            sk: 'DETAILS',
+            EntityType: 'Match',
+            matchId,
+            players: JSON.parse(cachedMatch.players),
+            status: cachedMatch.status,
+            createdAt: cachedMatch.createdAt,
+            playerAssets: JSON.parse(cachedMatch.playerAssets),
+            assetSelectionStartedAt: cachedMatch.assetSelectionStartedAt,
+            assetSelectionEndedAt: cachedMatch.assetSelectionEndedAt || '',
+            matchStartedAt: cachedMatch.matchStartedAt || '',
+          } as DynamoDBMatchItem;
+        }
+      } else {
+        await redis.del(REDIS_KEYS.MATCH(matchId));
       }
 
       const matchResult = await dynamodb.send(
