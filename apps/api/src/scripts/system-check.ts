@@ -243,8 +243,9 @@ const ensureTestAssetMetadata = async () => {
   const uniqueSeeds = new Map<string, Seed>()
 
   const upsertSeed = (seed: Seed) => {
-    if (!uniqueSeeds.has(seed.symbol)) {
-      uniqueSeeds.set(seed.symbol, seed)
+    const upperSymbol = seed.symbol.toUpperCase()
+    if (!uniqueSeeds.has(upperSymbol)) {
+      uniqueSeeds.set(upperSymbol, { ...seed, symbol: upperSymbol, name: seed.name ?? upperSymbol })
     }
   }
 
@@ -276,15 +277,14 @@ const ensureTestAssetMetadata = async () => {
 
   await Promise.all(
     Array.from(uniqueSeeds.values()).map(async seed => {
+      const upperSymbol = seed.symbol.toUpperCase()
       const item = {
-        PK: `ASSET#${seed.symbol}`,
-        SK: 'METADATA',
-        pk: `ASSET#${seed.symbol}`,
+        pk: `ASSET#${upperSymbol}`,
         sk: 'METADATA',
         EntityType: 'Asset',
         AssetType: seed.assetType,
-        Symbol: seed.symbol,
-        name: seed.name,
+        Symbol: upperSymbol,
+        name: seed.name ?? upperSymbol,
         currentPrice: 0,
         lastUpdated: timestamp
       }
@@ -295,12 +295,12 @@ const ensureTestAssetMetadata = async () => {
             TableName: DYNAMODB_TABLE,
             Item: item,
             ConditionExpression:
-              'attribute_not_exists(pk) AND attribute_not_exists(sk) AND attribute_not_exists(PK) AND attribute_not_exists(SK)'
+              'attribute_not_exists(pk) AND attribute_not_exists(sk)'
           })
         )
       } catch (error) {
         if (!(error instanceof Error) || error.name !== 'ConditionalCheckFailedException') {
-          console.warn(`⚠️  Failed to ensure metadata for ${seed.symbol}:`, error)
+          console.warn(`⚠️  Failed to ensure metadata for ${upperSymbol}:`, error)
         }
       }
     })

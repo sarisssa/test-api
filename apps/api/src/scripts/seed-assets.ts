@@ -73,14 +73,17 @@ function buildAssetPriceItem(
   currentPrice = 0
 ): Record<string, unknown> {
   const lastUpdated = new Date().toISOString();
+  const upperSymbol = symbol.toUpperCase();
   return {
-    pk: `ASSET#${assetType}`,
-    sk: symbol,
+    pk: `ASSET#${upperSymbol}`,
+    sk: 'PRICE',
+    EntityType: 'AssetPrice',
     AssetType: assetType,
-    Symbol: symbol,
+    assetType,
+    Symbol: upperSymbol,
+    symbol: upperSymbol,
     currentPrice,
     lastUpdated,
-    EntityType: 'AssetPrice',
   };
 }
 
@@ -88,12 +91,13 @@ const toWriteItem = (item: DynamoDBAssetItem): Record<string, unknown> =>
   item as unknown as Record<string, unknown>;
 
 function transformStockToDynamoDB(stock: StockData): DynamoDBAssetItem {
+  const upperSymbol = stock.symbol.toUpperCase();
   return {
-    pk: `ASSET#${stock.symbol}`,
+    pk: `ASSET#${upperSymbol}`,
     sk: `METADATA`,
     EntityType: 'Asset',
     AssetType: 'STOCK',
-    Symbol: stock.symbol,
+    Symbol: upperSymbol,
     name: stock.name,
     currentPrice: 0,
     lastUpdated: new Date().toISOString(),
@@ -117,12 +121,13 @@ function transformStockToDynamoDB(stock: StockData): DynamoDBAssetItem {
 }
 
 function transformCryptoToDynamoDB(crypto: CryptoData): any {
+  const upperSymbol = crypto.symbol.toUpperCase();
   return {
-    pk: `ASSET#${crypto.symbol}`,
+    pk: `ASSET#${upperSymbol}`,
     sk: `METADATA`,
     EntityType: 'Asset',
     AssetType: 'CRYPTO',
-    Symbol: crypto.symbol,
+    Symbol: upperSymbol,
     name: crypto.currency_base,
     currentPrice: 0,
     lastUpdated: new Date().toISOString(),
@@ -131,12 +136,13 @@ function transformCryptoToDynamoDB(crypto: CryptoData): any {
 }
 
 function transformCommodityToDynamoDB(commodity: CommodityData): any {
+  const upperSymbol = commodity.symbol.toUpperCase();
   return {
-    pk: `ASSET#${commodity.symbol}`,
+    pk: `ASSET#${upperSymbol}`,
     sk: `METADATA`,
     EntityType: 'Asset',
     AssetType: 'COMMODITY',
-    Symbol: commodity.symbol,
+    Symbol: upperSymbol,
     name: commodity.name,
     currentPrice: 0,
     lastUpdated: new Date().toISOString(),
@@ -281,53 +287,56 @@ async function seedAllAssets() {
     }
 
     for (const symbol of STOCK_TICKERS) {
-      if (!metadataBySymbol.has(symbol)) {
+      const upperSymbol = symbol.toUpperCase();
+      if (!metadataBySymbol.has(upperSymbol)) {
         addMetadata({
-          pk: `ASSET#${symbol}`,
+          pk: `ASSET#${upperSymbol}`,
           sk: 'METADATA',
           EntityType: 'Asset',
           AssetType: 'STOCK',
-          Symbol: symbol,
-          name: symbol,
+          Symbol: upperSymbol,
+          name: upperSymbol,
           currentPrice: 0,
           lastUpdated: new Date().toISOString(),
         });
       }
-      addPriceRecord('STOCK', symbol);
+      addPriceRecord('STOCK', upperSymbol);
     }
 
     for (const asset of CRYPTO_ASSETS) {
-      if (!metadataBySymbol.has(asset.symbol)) {
+      const upperSymbol = asset.symbol.toUpperCase();
+      if (!metadataBySymbol.has(upperSymbol)) {
         addMetadata({
-          PK: `ASSET#${asset.symbol}`,
-          SK: `METADATA#${asset.symbol}`,
+          pk: `ASSET#${upperSymbol}`,
+          sk: 'METADATA',
           EntityType: 'Asset',
           AssetType: 'CRYPTO',
-          Symbol: asset.symbol,
+          Symbol: upperSymbol,
           name: asset.name,
           currentPrice: 0,
           lastUpdated: new Date().toISOString(),
           description: asset.description,
         });
       }
-      addPriceRecord('CRYPTO', asset.symbol);
+      addPriceRecord('CRYPTO', upperSymbol);
     }
 
     for (const asset of COMMODITY_ASSETS) {
-      if (!metadataBySymbol.has(asset.symbol)) {
+      const upperSymbol = asset.symbol.toUpperCase();
+      if (!metadataBySymbol.has(upperSymbol)) {
         addMetadata({
-          pk: `ASSET#${asset.symbol}`,
+          pk: `ASSET#${upperSymbol}`,
           sk: 'METADATA',
           EntityType: 'Asset',
           AssetType: 'COMMODITY',
-          Symbol: asset.symbol,
+          Symbol: upperSymbol,
           name: asset.name,
           currentPrice: 0,
           lastUpdated: new Date().toISOString(),
           description: asset.description,
         });
       }
-      addPriceRecord('COMMODITY', asset.symbol);
+      addPriceRecord('COMMODITY', upperSymbol);
     }
 
     const metadataItems = Array.from(metadataBySymbol.values());

@@ -233,20 +233,25 @@ async function seedAssetPrices(assets: AssetSeed[]): Promise<void> {
   const nowIso = new Date().toISOString();
 
   const uniqueKeys = new Set<string>();
-  const items = assets.map(({ symbol, name, assetType }) => ({
-    PutRequest: {
-      Item: {
-        pk: `ASSET#${assetType}`,
-        sk: symbol,
-        EntityType: 'AssetPrice',
-        AssetType: assetType,
-        Symbol: symbol,
-        name: name || symbol,
-        currentPrice: 0,
-        lastUpdated: nowIso,
+  const items = assets.map(({ symbol, name, assetType }) => {
+    const upperSymbol = symbol.toUpperCase();
+    return {
+      PutRequest: {
+        Item: {
+          pk: `ASSET#${upperSymbol}`,
+          sk: 'PRICE',
+          EntityType: 'AssetPrice',
+          AssetType: assetType,
+          assetType,
+          Symbol: upperSymbol,
+          symbol: upperSymbol,
+          name: name || upperSymbol,
+          currentPrice: 0,
+          lastUpdated: nowIso,
+        },
       },
-    },
-  }));
+    };
+  });
 
   const BATCH_SIZE = 25;
   for (let i = 0; i < items.length; i += BATCH_SIZE) {

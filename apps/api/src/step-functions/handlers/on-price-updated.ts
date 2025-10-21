@@ -2,8 +2,6 @@
 type DynamoDBStreamEvent = any
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import { DynamoDBDocumentClient, QueryCommand, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb'
-
-type AssetType = 'STOCK' | 'CRYPTO' | 'COMMODITY'
 const TABLE = process.env.WAGE_TABLE_NAME ?? process.env.DYNAMODB_TABLE_NAME ?? 'WageTable'
 const ddb = DynamoDBDocumentClient.from(
   new DynamoDBClient({
@@ -22,22 +20,13 @@ export const handler = async (event: DynamoDBStreamEvent) => {
       const sk = rec.dynamodb.Keys.sk?.S ?? rec.dynamodb.Keys.SK?.S
       if (!pk || !sk) continue
 
-      // React to centralized price row updates only
-      const isTypeRow = pk.startsWith('ASSET#') && !pk.startsWith('ASSET#MATCH') && sk !== 'PRICE'
-      const isPerSymbolRow = pk.startsWith('ASSET#') && sk === 'PRICE'
-      if (!isTypeRow && !isPerSymbolRow) continue
+      // React only to per-symbol price updates (pk=ASSET#<symbol>, sk=PRICE)
+      const isPriceRow = pk.startsWith('ASSET#') && sk === 'PRICE'
+      if (!isPriceRow) continue
 
-      let symbol: string | undefined
-      let assetType: AssetType | undefined
-      if (isTypeRow) {
-        // pk: ASSET#<TYPE>, sk: <SYMBOL>
-        assetType = pk.replace('ASSET#', '') as AssetType
-        symbol = sk
-      } else {
-        // pk: ASSET#<SYMBOL>, sk: PRICE; try to read symbol/assetType from image
-        symbol = rec.dynamodb.NewImage?.symbol?.S || pk.replace('ASSET#', '')
-        assetType = (rec.dynamodb.NewImage?.assetType?.S as AssetType) || undefined
-      }
+      const symbol =
+        rec.dynamodb.NewImage?.symbol?.S ||
+        pk.replace('ASSET#', '')
       if (!symbol) continue
 
       const newPriceAttr = rec.dynamodb.NewImage?.currentPrice
@@ -82,8 +71,8 @@ export const handler = async (event: DynamoDBStreamEvent) => {
             new UpdateCommand({
               TableName: TABLE,
               Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' },
-              UpdateExpression: 'SET playerAssets = :pa, PK = :legacyPk, SK = :legacySk',
-              ExpressionAttributeValues: { ':pa': updated, ':legacyPk': `MATCH#${matchId}`, ':legacySk': 'DETAILS' },
+              UpdateExpression: 'SET playerAssets = :pa',
+              ExpressionAttributeValues: { ':pa': updated },
             })
           )
         })
