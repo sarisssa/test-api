@@ -58,9 +58,9 @@ const shouldInitialiseStepFunctionsClient =
 
 export const stepFunctionsClient = shouldInitialiseStepFunctionsClient
   ? new SFNClient({
-      region: AWS_REGION,
-      ...(STEP_FUNCTIONS_ENDPOINT ? { endpoint: STEP_FUNCTIONS_ENDPOINT } : {}),
-    })
+    region: AWS_REGION,
+    ...(STEP_FUNCTIONS_ENDPOINT ? { endpoint: STEP_FUNCTIONS_ENDPOINT } : {}),
+  })
   : null;
 
 export async function ensureDynamoTable(): Promise<void> {

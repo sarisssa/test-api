@@ -1,13 +1,12 @@
-import { GetCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
-import 'dotenv/config';
-import type { Redis as RedisClient } from 'ioredis';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import WebSocket from 'ws';
-import { INITIAL_PORTFOLIO_VALUE } from '../constants.js';
-import type { DynamoDBMatchItem } from '../models/match.js';
-import { handler as computeOutcomeHandler } from '../step-functions/handlers/compute-outcome.js';
-import { CRYPTO_ASSETS } from './lib/asset-lists.js';
+import 'dotenv/config'
+import { GetCommand, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb'
+import { mkdirSync, existsSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import type { Redis as RedisClient } from 'ioredis'
+import WebSocket from 'ws'
+import { INITIAL_PORTFOLIO_VALUE } from '../constants.js'
+import { handler as computeOutcomeHandler } from '../step-functions/handlers/compute-outcome.js'
+import type { DynamoDBMatchItem } from '../models/match.js'
 import {
   DYNAMODB_ENDPOINT,
   DYNAMODB_TABLE,
@@ -138,20 +137,34 @@ const awaitMatchCompletion = async (
   matchId: string,
   timeoutMs = 45_000
 ): Promise<DynamoDBMatchItem> => {
-  const deadline = Date.now() + timeoutMs;
+  const startedAt = Date.now()
+  const deadline = startedAt + timeoutMs
+  let nextLogAt = startedAt
+
+  console.log(`⏱️  Waiting for match ${matchId} to complete (timeout ${timeoutMs}ms)...`)
 
   while (Date.now() < deadline) {
     const match = await fetchMatchRecord(matchId);
     if (match && match.status === 'completed') {
-      return match;
+      const duration = Date.now() - startedAt
+      console.log(`✅ Match ${matchId} completed after ${duration}ms`)
+      return match
     }
-    await new Promise(resolve =>
-      setTimeout(resolve, MATCH_COMPLETION_POLL_INTERVAL_MS)
-    );
+
+    const now = Date.now()
+    if (now >= nextLogAt) {
+      const elapsedMs = now - startedAt
+      console.log(
+        `⏳ Match ${matchId} still in progress after ${elapsedMs}ms; polling again in ${MATCH_COMPLETION_POLL_INTERVAL_MS}ms`
+      )
+      nextLogAt = now + 5_000
+    }
+
+    await new Promise(resolve => setTimeout(resolve, MATCH_COMPLETION_POLL_INTERVAL_MS))
   }
 
-  throw new Error(`Timed out waiting for match ${matchId} to complete`);
-};
+  throw new Error(`Timed out waiting for match ${matchId} to complete after ${timeoutMs}ms`)
+}
 
 const scanMatchesForUser = async (
   userId: string
@@ -217,10 +230,76 @@ const calculatePortfolioTotals = (
       return sum + shares * price;
     }, 0);
 
-    acc[playerId] = total;
-    return acc;
-  }, {});
-};
+    acc[playerId] = total
+    return acc
+  }, {})
+}
+
+const ensureTestAssetMetadata = async () => {
+  const timestamp = new Date().toISOString()
+
+  type Seed = { symbol: string; name: string; assetType: 'STOCK' | 'CRYPTO' | 'COMMODITY' }
+  const uniqueSeeds = new Map<string, Seed>()
+
+  const upsertSeed = (seed: Seed) => {
+    if (!uniqueSeeds.has(seed.symbol)) {
+      uniqueSeeds.set(seed.symbol, seed)
+    }
+  }
+
+  STOCK_TICKERS.forEach(symbol => {
+    upsertSeed({ symbol, name: symbol, assetType: 'STOCK' })
+  })
+
+  CRYPTO_ASSETS.forEach(asset => {
+    upsertSeed({ symbol: asset.symbol, name: asset.name, assetType: asset.assetType })
+  })
+
+  // Ensure any explicitly-listed crypto lobby assets (e.g., SOL/USD) are covered even if lists change.
+  Object.values(CRYPTO_FORFEIT_ASSETS).forEach(group => {
+    group.forEach(symbol => upsertSeed({ symbol, name: symbol, assetType: 'CRYPTO' }))
+  })
+  Object.values(CRYPTO_TIMED_ASSETS).forEach(group => {
+    group.forEach(symbol => upsertSeed({ symbol, name: symbol, assetType: 'CRYPTO' }))
+  })
+
+  STOCK_LOBBY_TICKERS.forEach(symbol => {
+    upsertSeed({ symbol, name: symbol, assetType: 'STOCK' })
+  })
+  Object.values(STOCK_FORFEIT_ASSETS).forEach(group => {
+    group.forEach(symbol => upsertSeed({ symbol, name: symbol, assetType: 'STOCK' }))
+  })
+  Object.values(STOCK_TIMED_ASSETS).forEach(group => {
+    group.forEach(symbol => upsertSeed({ symbol, name: symbol, assetType: 'STOCK' }))
+  })
+
+  await Promise.all(
+    Array.from(uniqueSeeds.values()).map(async seed => {
+      try {
+        await documentClient.send(
+          new PutCommand({
+            TableName: DYNAMODB_TABLE,
+            Item: {
+              PK: `ASSET#${seed.symbol}`,
+              SK: 'METADATA',
+              EntityType: 'Asset',
+              AssetType: seed.assetType,
+              Symbol: seed.symbol,
+              name: seed.name,
+              currentPrice: 0,
+              lastUpdated: timestamp
+            },
+            ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)'
+          })
+        )
+      } catch (error) {
+        if (!(error instanceof Error) || error.name !== 'ConditionalCheckFailedException') {
+          console.warn(`⚠️  Failed to ensure metadata for ${seed.symbol}:`, error)
+        }
+      }
+    })
+  )
+}
 
 class MatchGatewayClient {
   private ws: WebSocket | null = null;
@@ -233,7 +312,7 @@ class MatchGatewayClient {
     public readonly label: string,
     public readonly userId: string,
     private readonly token: string
-  ) {}
+  ) { }
 
   async connect(): Promise<void> {
     await new Promise<void>((resolve, reject) => {
@@ -290,28 +369,63 @@ class MatchGatewayClient {
 
   async waitFor(
     predicate: (msg: WsMessage) => boolean,
-    timeoutMs = 10_000
+    timeoutMs = 10_000,
+    context?: string
   ): Promise<WsMessage> {
     const existingIndex = this.pendingMessages.findIndex(predicate);
     if (existingIndex >= 0) {
-      const existing = this.pendingMessages.splice(existingIndex, 1)[0];
-      return existing;
+      const existing = this.pendingMessages.splice(existingIndex, 1)[0]
+      if (context) {
+        console.log(
+          `[${this.label}] Matched queued WebSocket message for '${context}' immediately`
+        )
+      }
+      return existing
     }
 
     return await new Promise<WsMessage>((resolve, reject) => {
-      const timeoutHandle = setTimeout(() => {
-        this.waiters = this.waiters.filter(
-          waiter => waiter.timeoutHandle !== timeoutHandle
-        );
-        reject(
-          new Error(`[${this.label}] Timed out waiting for WebSocket message`)
-        );
-      }, timeoutMs);
+      const startedAt = Date.now()
+      let lastHeartbeatLog = 0
+      const heartbeat = setInterval(() => {
+        const elapsed = Date.now() - startedAt
+        const descriptor = context ?? 'WebSocket message'
+        if (elapsed >= 5_000 && elapsed - lastHeartbeatLog >= 5_000) {
+          lastHeartbeatLog = elapsed
+          console.log(`[${this.label}] Waiting ${elapsed}ms for '${descriptor}'...`)
+        }
+      }, 1_000)
+
+      let timeoutHandle: NodeJS.Timeout
+      const cleanup = () => {
+        clearInterval(heartbeat)
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle)
+        }
+      }
+
+      timeoutHandle = setTimeout(() => {
+        this.waiters = this.waiters.filter(waiter => waiter.timeoutHandle !== timeoutHandle)
+        cleanup()
+        const descriptor = context ?? 'WebSocket message'
+        reject(new Error(`[${this.label}] Timed out waiting for ${descriptor}`))
+      }, timeoutMs)
 
       this.waiters.push({
         predicate,
-        resolve,
-        reject,
+        resolve: value => {
+          cleanup()
+          const elapsed = Date.now() - startedAt
+          if (context) {
+            console.log(
+              `[${this.label}] Received '${context}' after ${elapsed}ms`
+            )
+          }
+          resolve(value)
+        },
+        reject: reason => {
+          cleanup()
+          reject(reason)
+        },
         timeoutHandle,
       });
     });
@@ -342,8 +456,8 @@ class MatchGatewayClient {
         }
         return false;
       }
-      return msg.type === 'error';
-    }, timeoutMs);
+      return msg.type === 'error'
+    }, timeoutMs, label)
   }
 
   private handleMessage(raw: string) {
@@ -493,8 +607,9 @@ async function runAssetTests(token: string) {
     token
   );
 
-  if (assetDetail.Symbol !== 'NVDA') {
-    throw new Error('Asset detail retrieval failed for NVDA');
+  const detailSymbol = (assetDetail.Symbol ?? assetDetail.symbol) as string | undefined
+  if (detailSymbol?.toUpperCase() !== 'NVDA') {
+    throw new Error(`Asset detail retrieval failed for NVDA (received ${detailSymbol ?? 'unknown'})`)
   }
   console.log('   ✅ Asset detail retrieval passed for NVDA');
 }
@@ -897,7 +1012,8 @@ async function main() {
   await ensureStepFunctionsStateMachine();
   const redis = await verifyRedis();
 
-  await seedStocks();
+  await seedStocks()
+  await ensureTestAssetMetadata()
 
   const [playersAB, playersCD] = await Promise.all([
     Promise.all([
@@ -935,13 +1051,13 @@ async function main() {
   // Run scenarios sequentially to avoid cross-pair matchmaking
   const forfeitAssets = marketOpen
     ? {
-        playerA: [...STOCK_FORFEIT_ASSETS.playerA],
-        playerB: [...STOCK_FORFEIT_ASSETS.playerB],
-      }
+      playerA: [...STOCK_FORFEIT_ASSETS.playerA],
+      playerB: [...STOCK_FORFEIT_ASSETS.playerB],
+    }
     : {
-        playerA: [...CRYPTO_FORFEIT_ASSETS.playerA],
-        playerB: [...CRYPTO_FORFEIT_ASSETS.playerB],
-      };
+      playerA: [...CRYPTO_FORFEIT_ASSETS.playerA],
+      playerB: [...CRYPTO_FORFEIT_ASSETS.playerB],
+    };
   const forfeitMode: 'stock' | 'crypto' = marketOpen ? 'stock' : 'crypto';
   const forfeitResult = await runForfeitScenario(
     playersAB,
@@ -973,7 +1089,7 @@ async function main() {
       ids.map(id => [
         id,
         ((totals[id] - INITIAL_PORTFOLIO_VALUE) / INITIAL_PORTFOLIO_VALUE) *
-          100,
+        100,
       ])
     );
     console.log(`\n⏱️  Timed Match ${timedMatch.matchId}`);
@@ -1001,7 +1117,7 @@ async function main() {
       ids.map(id => [
         id,
         ((totals[id] - INITIAL_PORTFOLIO_VALUE) / INITIAL_PORTFOLIO_VALUE) *
-          100,
+        100,
       ])
     );
     console.log(`\n🏳️  Forfeit Match ${forfeitResult.matchId}`);

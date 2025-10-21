@@ -8,7 +8,7 @@ import {
 import { buildMatchSettlementDefinition } from '../step-functions/definition.js'
 
 const STATE_MACHINE_NAME =
-  process.env.MATCH_SETTLEMENT_STATE_MACHINE_NAME ?? 'wage-match-settlement'
+  process.env.MATCH_SETTLEMENT_STATE_MACHINE_NAME ?? 'WageMatchSettlement'
 const STATE_MACHINE_ROLE_ARN =
   process.env.MATCH_SETTLEMENT_ROLE_ARN ??
   'arn:aws:iam::000000000000:role/WageMatchSettlementRole'

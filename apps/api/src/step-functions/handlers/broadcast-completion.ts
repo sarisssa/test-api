@@ -1,11 +1,8 @@
-import {
-  DynamoDBClient,
-  GetItemCommand,
-  UpdateItemCommand,
-} from '@aws-sdk/client-dynamodb';
-import { unmarshall } from '@aws-sdk/util-dynamodb';
-import Redis from 'ioredis';
-type RedisClient = import('ioredis').Redis;
+import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb'
+import { UpdateCommand, DynamoDBDocumentClient, QueryCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb'
+import { unmarshall } from '@aws-sdk/util-dynamodb'
+import Redis from 'ioredis'
+type RedisClient = import('ioredis').Redis
 
 /**
  * BroadcastCompletion Lambda Handler
@@ -42,10 +39,12 @@ interface MatchItem {
 const WEBSOCKET_OUTGOING_CHANNEL = 'websocket:outgoing_messages';
 
 // Initialize clients
-const dynamodb = new DynamoDBClient({
+const ddbLow = new DynamoDBClient({
   region: process.env.AWS_REGION ?? 'us-east-1',
   ...(process.env.DYNAMODB_URL && { endpoint: process.env.DYNAMODB_URL }),
-});
+})
+const dynamodb = ddbLow
+const ddb = DynamoDBDocumentClient.from(ddbLow)
 
 let redisClient: RedisClient | null = null;
 
@@ -55,7 +54,7 @@ let redisClient: RedisClient | null = null;
 async function getRedisClient(): Promise<RedisClient> {
   if (!redisClient) {
     const redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
-    const RedisCtor = Redis as unknown as { new (url: string): RedisClient };
+    const RedisCtor = Redis as unknown as { new(url: string): RedisClient };
     redisClient = new RedisCtor(redisUrl);
     redisClient.on('error', (err: unknown) => {
       console.error('Redis client error:', err);
@@ -110,7 +109,59 @@ async function markMatchBroadcasted(matchId: string): Promise<void> {
     })
   );
 
-  console.log(`Marked match ${matchId} as broadcasted at ${now}`);
+  console.log(`Marked match ${matchId} as broadcasted at ${now}`)
+}
+
+/**
+ * Deregister in-play tickers for the finished match
+ */
+async function deregisterInPlay(matchId: string): Promise<void> {
+  try {
+    const tableName = process.env.WAGE_TABLE_NAME ?? 'WageTable'
+    const gm = await ddb.send(
+      new QueryCommand({
+        TableName: tableName,
+        KeyConditionExpression: 'PK = :pk',
+        ExpressionAttributeValues: { ':pk': `MATCH#${matchId}` },
+      })
+    )
+    // We don't have all assets by a direct PK; fetch match to read assets
+    const match = await fetchMatch(matchId)
+    const tickers: Array<{ assetType: string; symbol: string }> = []
+    Object.values((match as any).playerAssets ?? {}).forEach((sel: any) => {
+      sel.assets?.forEach((a: any) => tickers.push({ assetType: a.assetType, symbol: a.ticker }))
+    })
+    const seen = new Set<string>()
+    const dedup = tickers.filter(t => {
+      const k = `${t.assetType}#${t.symbol}`
+      if (seen.has(k)) return false
+      seen.add(k)
+      return true
+    })
+    await Promise.all(
+      dedup.map(async t => {
+        // decrement count
+        await ddb.send(
+          new UpdateCommand({
+            TableName: tableName,
+            Key: { PK: 'INPLAY#TICKER', SK: `${t.assetType}#${t.symbol}` },
+            UpdateExpression: 'ADD #count :negOne SET updatedAt = :now',
+            ExpressionAttributeNames: { '#count': 'count' },
+            ExpressionAttributeValues: { ':negOne': -1, ':now': new Date().toISOString() },
+          })
+        )
+        // remove mapping
+        await ddb.send(
+          new DeleteCommand({
+            TableName: tableName,
+            Key: { PK: `INPLAY#MAP#${t.symbol}`, SK: `MATCH#${matchId}` },
+          })
+        )
+      })
+    )
+  } catch (err) {
+    console.warn('Failed to deregister in-play tickers on broadcast', err)
+  }
 }
 
 /**
@@ -216,7 +267,10 @@ export const handler = async (
     console.log(`Broadcasted match_completed for match ${matchId}`);
 
     // 5. Mark as broadcasted
-    await markMatchBroadcasted(matchId);
+    await markMatchBroadcasted(matchId)
+
+    // 6. Deregister in-play tickers (time_expired path)
+    await deregisterInPlay(matchId)
   } catch (error) {
     console.error('BroadcastCompletion Lambda error:', error);
     throw error;

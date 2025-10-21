@@ -91,41 +91,72 @@ async function fetchMatch(
 }
 
 /**
- * Fetch current asset price from DynamoDB
- * Tries STOCK, CRYPTO, COMMODITY prefixes
+ * Fetch current asset price from DynamoDB.
+ * Supports both the current schema (PK=ASSET#<ticker>, SK=METADATA|PRICE)
+ * and the legacy schema (PK=ASSET#<assetType>, SK=<ticker>).
  */
-async function fetchAssetPrice(
-  tableName: string,
-  ticker: string
-): Promise<number | null> {
-  const assetTypes = ['STOCK', 'CRYPTO', 'COMMODITY'];
+async function fetchAssetPrice(tableName: string, ticker: string): Promise<number | null> {
+  const normalized = ticker.toUpperCase()
+  const startedAt = Date.now()
 
-  for (const assetType of assetTypes) {
+  const keyAttempts: Array<{ pk: string; sk: string; label: string }> = [
+    { pk: `ASSET#${normalized}`, sk: 'METADATA', label: 'metadata' },
+    { pk: `ASSET#${normalized}`, sk: 'PRICE', label: 'price' },
+  ]
+
+  const legacyAssetTypes = ['STOCK', 'CRYPTO', 'COMMODITY']
+  legacyAssetTypes.forEach(assetType => {
+    keyAttempts.push({
+      pk: `ASSET#${assetType}`,
+      sk: normalized,
+      label: `legacy-${assetType.toLowerCase()}`,
+    })
+  })
+
+  for (const attempt of keyAttempts) {
     try {
+      console.log(
+        `[ComputeOutcome] Fetching price for ${normalized} via PK=${attempt.pk}, SK=${attempt.sk}`
+      )
+
       const result = await dynamodb.send(
         new GetItemCommand({
           TableName: tableName,
           Key: {
-            pk: { S: `ASSET#${assetType}` },
-            sk: { S: ticker },
+            PK: { S: attempt.pk },
+            SK: { S: attempt.sk },
           },
           ConsistentRead: true,
         })
       );
 
-      if (result.Item) {
-        const asset = unmarshall(result.Item);
-        if (typeof asset.currentPrice === 'number') {
-          return asset.currentPrice;
-        }
+      if (!result.Item) {
+        continue
       }
+
+      const asset = unmarshall(result.Item)
+      if (typeof asset.currentPrice === 'number') {
+        const duration = Date.now() - startedAt
+        console.log(
+          `[ComputeOutcome] Found price for ${normalized} (${attempt.label}) in ${duration}ms: ${asset.currentPrice}`
+        )
+        return asset.currentPrice
+      }
+
+      console.warn(
+        `[ComputeOutcome] ${attempt.label} record for ${normalized} missing numeric currentPrice`
+      )
     } catch (error) {
-      // Continue to next type
-      console.warn(`Failed to fetch ${assetType}#${ticker}:`, error);
+      console.warn(
+        `[ComputeOutcome] Failed to fetch ${normalized} (${attempt.label}) - ${String(error)}`
+      )
     }
   }
 
-  return null;
+  console.warn(
+    `[ComputeOutcome] No current price found for ${normalized} after ${Date.now() - startedAt}ms`
+  )
+  return null
 }
 
 /**
@@ -142,7 +173,13 @@ async function computeFinalScores(
   });
 
   // 2. Fetch current prices for all tickers
-  const priceMap: Record<string, number> = {};
+  const priceMap: Record<string, number> = {}
+  console.log(
+    `[ComputeOutcome] Preparing to fetch prices for ${tickers.size} ticker(s): ${Array.from(
+      tickers
+    ).join(', ')}`
+  )
+  const pricesStartedAt = Date.now()
   await Promise.all(
     Array.from(tickers).map(async ticker => {
       const price = await fetchAssetPrice(tableName, ticker);
@@ -150,7 +187,11 @@ async function computeFinalScores(
         priceMap[ticker] = price;
       }
     })
-  );
+  )
+  console.log(
+    `[ComputeOutcome] Price fetch complete in ${Date.now() - pricesStartedAt}ms; ${Object.keys(priceMap).length
+    }/${tickers.size} tickers resolved`
+  )
 
   // 3. Calculate total portfolio value for each player
   const totals: Record<string, number> = {};
