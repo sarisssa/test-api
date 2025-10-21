@@ -264,17 +264,25 @@ export default async function assetRoutes(fastify: FastifyInstance) {
 
         if (asset) {
           return asset;
-        } else {
-          fastify.log.info(`Asset not found: ${symbol}`);
-          reply.status(404).send({ error: 'Asset not found.' });
         }
+
+        fastify.log.info(`Asset not found: ${symbol}`);
+        return reply.status(404).send({
+          statusCode: 404,
+          error: 'Not Found',
+          message: 'Asset not found.',
+        });
       } catch (error) {
         fastify.log.error({
           error,
           symbol,
           msg: 'Error in GET /assets/:symbol endpoint',
         });
-        reply.status(500).send({ error: (error as Error).message });
+        return reply.status(500).send({
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: (error as Error).message,
+        });
       }
     }
   );

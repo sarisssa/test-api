@@ -22,15 +22,17 @@ export const createInPlayRepository = (fastify: FastifyInstance) => {
         await dynamodb.send(
           new UpdateCommand({
             TableName: tableName,
-            Key: { PK: REGISTRY_PK, SK: REGISTRY_SK(t) },
+            Key: { pk: REGISTRY_PK, sk: REGISTRY_SK(t) },
             UpdateExpression:
-              'SET symbol = :symbol, assetType = :assetType, updatedAt = :now ADD #count :one',
+              'SET symbol = :symbol, assetType = :assetType, updatedAt = :now, PK = :legacyPk, SK = :legacySk ADD #count :one',
             ExpressionAttributeNames: { '#count': 'count' },
             ExpressionAttributeValues: {
               ':symbol': t.symbol,
               ':assetType': t.assetType,
               ':now': new Date().toISOString(),
               ':one': 1,
+              ':legacyPk': REGISTRY_PK,
+              ':legacySk': REGISTRY_SK(t),
             },
           })
         )
@@ -39,6 +41,8 @@ export const createInPlayRepository = (fastify: FastifyInstance) => {
           new PutCommand({
             TableName: tableName,
             Item: {
+              pk: MAP_PK(t.symbol),
+              sk: MAP_SK(matchId),
               PK: MAP_PK(t.symbol),
               SK: MAP_SK(matchId),
               symbol: t.symbol,
@@ -65,18 +69,23 @@ export const createInPlayRepository = (fastify: FastifyInstance) => {
         await dynamodb.send(
           new UpdateCommand({
             TableName: tableName,
-            Key: { PK: REGISTRY_PK, SK: REGISTRY_SK(t) },
+            Key: { pk: REGISTRY_PK, sk: REGISTRY_SK(t) },
             UpdateExpression:
-              'SET updatedAt = :now ADD #count :negOne',
+              'SET updatedAt = :now, PK = :legacyPk, SK = :legacySk ADD #count :negOne',
             ExpressionAttributeNames: { '#count': 'count' },
-            ExpressionAttributeValues: { ':now': new Date().toISOString(), ':negOne': -1 },
+            ExpressionAttributeValues: {
+              ':now': new Date().toISOString(),
+              ':negOne': -1,
+              ':legacyPk': REGISTRY_PK,
+              ':legacySk': REGISTRY_SK(t),
+            },
           })
         )
 
         await dynamodb.send(
           new DeleteCommand({
             TableName: tableName,
-            Key: { PK: MAP_PK(t.symbol), SK: MAP_SK(matchId) },
+            Key: { pk: MAP_PK(t.symbol), sk: MAP_SK(matchId) },
           })
         )
       } catch (error) {
@@ -92,7 +101,7 @@ export const createInPlayRepository = (fastify: FastifyInstance) => {
       const result = await dynamodb.send(
         new QueryCommand({
           TableName: tableName,
-          KeyConditionExpression: 'PK = :pk',
+          KeyConditionExpression: 'pk = :pk',
           ExpressionAttributeValues: { ':pk': REGISTRY_PK },
         })
       )
@@ -109,13 +118,16 @@ export const createInPlayRepository = (fastify: FastifyInstance) => {
       const result = await dynamodb.send(
         new QueryCommand({
           TableName: tableName,
-          KeyConditionExpression: 'PK = :pk',
+          KeyConditionExpression: 'pk = :pk',
           ExpressionAttributeValues: { ':pk': MAP_PK(symbol) },
-          ProjectionExpression: 'SK',
+          ProjectionExpression: 'sk, SK',
         })
       )
       const items = result.Items || []
-      return items.map(i => (i.SK as string).replace('MATCH#', ''))
+      return items
+        .map(i => (i.sk ?? i.SK) as string | undefined)
+        .filter((val): val is string => typeof val === 'string')
+        .map(val => val.replace('MATCH#', ''))
     } catch (error) {
       logger.error({ error, symbol, msg: 'listMatchesForSymbol failed' })
       return []
@@ -129,4 +141,3 @@ export const createInPlayRepository = (fastify: FastifyInstance) => {
     listMatchesForSymbol,
   }
 }
-

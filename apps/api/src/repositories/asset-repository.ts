@@ -73,27 +73,32 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
     ticker: string
   ): Promise<DynamoDBAssetItem | null> => {
     const upperTicker = ticker.toUpperCase();
-    const key = {
-      PK: `ASSET#${upperTicker}`,
-      SK: 'METADATA',
+    const lowercaseKey = {
+      pk: `ASSET#${upperTicker}`,
+      sk: 'METADATA',
     };
 
     try {
-      const result = await fastify.dynamodb.send(
+      // Prefer new lowercase schema
+      const lowercaseResult = await fastify.dynamodb.send(
         new GetCommand({
           TableName: fastify.config.DYNAMODB_TABLE_NAME,
-          Key: key,
+          Key: lowercaseKey,
         })
       );
-
-      if (result.Item) {
-        return result.Item as DynamoDBAssetItem;
+      if (lowercaseResult.Item) {
+        return lowercaseResult.Item as DynamoDBAssetItem;
       }
-      // fallback to legacy key casing if item uses pk/sk
+
+      // fallback to legacy key casing
+      const legacyKey = {
+        PK: `ASSET#${upperTicker}`,
+        SK: 'METADATA',
+      };
       const legacyResult = await fastify.dynamodb.send(
         new GetCommand({
           TableName: fastify.config.DYNAMODB_TABLE_NAME,
-        Key: { pk: `ASSET#${upperTicker}`, sk: 'METADATA' },
+          Key: legacyKey,
         })
       );
       if (legacyResult.Item) {
@@ -187,13 +192,16 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
         new UpdateCommand({
           TableName: fastify.config.DYNAMODB_TABLE_NAME,
           Key: {
-            PK: `ASSET#${ticker.toUpperCase()}`,
-            SK: 'METADATA',
+            pk: `ASSET#${ticker.toUpperCase()}`,
+            sk: 'METADATA',
           },
-          UpdateExpression: 'SET currentPrice = :price, lastUpdated = :updated',
+          UpdateExpression:
+            'SET currentPrice = :price, lastUpdated = :updated, PK = :legacyPk, SK = :legacySk',
           ExpressionAttributeValues: {
             ':price': currentPrice,
             ':updated': lastUpdated,
+            ':legacyPk': `ASSET#${ticker.toUpperCase()}`,
+            ':legacySk': 'METADATA',
           },
         })
       );
