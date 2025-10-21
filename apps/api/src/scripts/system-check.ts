@@ -19,7 +19,8 @@ import {
   seedStocks as seedStocksTask,
   shutdownSystemPrep,
   verifyRedis as verifyRedisTask,
-} from './lib/system-prep.js';
+} from './lib/system-prep.js'
+import { CRYPTO_ASSETS, STOCK_TICKERS } from './lib/asset-lists.js'
 
 type PlayerAuth = {
   label: string;
@@ -275,21 +276,26 @@ const ensureTestAssetMetadata = async () => {
 
   await Promise.all(
     Array.from(uniqueSeeds.values()).map(async seed => {
+      const item = {
+        PK: `ASSET#${seed.symbol}`,
+        SK: 'METADATA',
+        pk: `ASSET#${seed.symbol}`,
+        sk: 'METADATA',
+        EntityType: 'Asset',
+        AssetType: seed.assetType,
+        Symbol: seed.symbol,
+        name: seed.name,
+        currentPrice: 0,
+        lastUpdated: timestamp
+      }
+
       try {
         await documentClient.send(
           new PutCommand({
             TableName: DYNAMODB_TABLE,
-            Item: {
-              PK: `ASSET#${seed.symbol}`,
-              SK: 'METADATA',
-              EntityType: 'Asset',
-              AssetType: seed.assetType,
-              Symbol: seed.symbol,
-              name: seed.name,
-              currentPrice: 0,
-              lastUpdated: timestamp
-            },
-            ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)'
+            Item: item,
+            ConditionExpression:
+              'attribute_not_exists(pk) AND attribute_not_exists(sk) AND attribute_not_exists(PK) AND attribute_not_exists(SK)'
           })
         )
       } catch (error) {

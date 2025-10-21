@@ -92,8 +92,8 @@ async function fetchMatch(
 
 /**
  * Fetch current asset price from DynamoDB.
- * Supports both the current schema (PK=ASSET#<ticker>, SK=METADATA|PRICE)
- * and the legacy schema (PK=ASSET#<assetType>, SK=<ticker>).
+ * Supports both the current schema (pk=ASSET#<ticker>, sk=METADATA|PRICE)
+ * and the legacy schema (pk=ASSET#<assetType>, sk=<ticker>).
  */
 async function fetchAssetPrice(tableName: string, ticker: string): Promise<number | null> {
   const normalized = ticker.toUpperCase()
@@ -116,15 +116,15 @@ async function fetchAssetPrice(tableName: string, ticker: string): Promise<numbe
   for (const attempt of keyAttempts) {
     try {
       console.log(
-        `[ComputeOutcome] Fetching price for ${normalized} via PK=${attempt.pk}, SK=${attempt.sk}`
+        `[ComputeOutcome] Fetching price for ${normalized} via pk=${attempt.pk}, sk=${attempt.sk}`
       )
 
       const result = await dynamodb.send(
         new GetItemCommand({
           TableName: tableName,
           Key: {
-            PK: { S: attempt.pk },
-            SK: { S: attempt.sk },
+            pk: { S: attempt.pk },
+            sk: { S: attempt.sk },
           },
           ConsistentRead: true,
         })

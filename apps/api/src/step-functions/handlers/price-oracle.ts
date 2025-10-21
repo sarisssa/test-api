@@ -28,7 +28,7 @@ const isPlaceholderKey = (value: string | undefined) => {
 
 async function listInPlay(): Promise<Array<{ symbol: string; assetType: AssetType }>> {
   const res = await ddb.send(
-    new QueryCommand({ TableName: TABLE, KeyConditionExpression: 'PK = :pk', ExpressionAttributeValues: { ':pk': REGISTRY_PK } })
+    new QueryCommand({ TableName: TABLE, KeyConditionExpression: 'pk = :pk', ExpressionAttributeValues: { ':pk': REGISTRY_PK } })
   )
   const items = res.Items ?? []
   return items.map(i => ({ symbol: i.symbol as string, assetType: i.assetType as AssetType }))
@@ -75,7 +75,7 @@ async function writePrice(assetType: AssetType, symbol: string, price: number): 
   await ddb.send(
     new UpdateCommand({
       TableName: TABLE,
-      Key: { PK: `ASSET#${assetType}`, SK: symbol },
+      Key: { pk: `ASSET#${assetType}`, sk: symbol },
       UpdateExpression: 'SET currentPrice = :p, lastUpdated = :ts',
       ExpressionAttributeValues: { ':p': price, ':ts': now },
     })
@@ -84,18 +84,18 @@ async function writePrice(assetType: AssetType, symbol: string, price: number): 
   await ddb.send(
     new UpdateCommand({
       TableName: TABLE,
-      Key: { PK: `ASSET#${symbol}`, SK: 'PRICE' },
-      UpdateExpression: 'SET currentPrice = :p, lastUpdated = :ts, assetType = :t, symbol = :s',
-      ExpressionAttributeValues: { ':p': price, ':ts': now, ':t': assetType, ':s': symbol },
+      Key: { pk: `ASSET#${symbol}`, sk: 'PRICE' },
+      UpdateExpression: 'SET currentPrice = :p, lastUpdated = :ts, assetType = :t, symbol = :s, PK = :legacyPkPrice, SK = :legacySkPrice',
+      ExpressionAttributeValues: { ':p': price, ':ts': now, ':t': assetType, ':s': symbol, ':legacyPkPrice': `ASSET#${symbol}`, ':legacySkPrice': 'PRICE' },
     })
   )
   // Ensure metadata row stays in sync so legacy consumers (and system-check) see live prices
   await ddb.send(
     new UpdateCommand({
       TableName: TABLE,
-      Key: { PK: `ASSET#${symbol}`, SK: 'METADATA' },
-      UpdateExpression: 'SET currentPrice = :p, lastUpdated = :ts',
-      ExpressionAttributeValues: { ':p': price, ':ts': now },
+      Key: { pk: `ASSET#${symbol}`, sk: 'METADATA' },
+      UpdateExpression: 'SET currentPrice = :p, lastUpdated = :ts, PK = :legacyPkMeta, SK = :legacySkMeta',
+      ExpressionAttributeValues: { ':p': price, ':ts': now, ':legacyPkMeta': `ASSET#${symbol}`, ':legacySkMeta': 'METADATA' },
     })
   )
 }

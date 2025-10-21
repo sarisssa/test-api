@@ -18,8 +18,8 @@ export const handler = async (event: DynamoDBStreamEvent) => {
   for (const rec of event.Records) {
     try {
       if (rec.eventName !== 'MODIFY' || !rec.dynamodb?.Keys) continue
-      const pk = rec.dynamodb.Keys.PK?.S
-      const sk = rec.dynamodb.Keys.SK?.S
+      const pk = rec.dynamodb.Keys.pk?.S ?? rec.dynamodb.Keys.PK?.S
+      const sk = rec.dynamodb.Keys.sk?.S ?? rec.dynamodb.Keys.SK?.S
       if (!pk || !sk) continue
 
       // React to centralized price row updates only
@@ -46,7 +46,7 @@ export const handler = async (event: DynamoDBStreamEvent) => {
 
       // Find matches using this symbol
       const q = await ddb.send(
-        new QueryCommand({ TableName: TABLE, KeyConditionExpression: 'PK = :pk', ExpressionAttributeValues: { ':pk': MAP_PK(symbol) } })
+        new QueryCommand({ TableName: TABLE, KeyConditionExpression: 'pk = :pk', ExpressionAttributeValues: { ':pk': MAP_PK(symbol) } })
       )
       const mapItems = q.Items ?? []
       if (mapItems.length === 0) continue
@@ -54,9 +54,11 @@ export const handler = async (event: DynamoDBStreamEvent) => {
       // Update each match's playerAssets for this symbol only
       await Promise.all(
         mapItems.map(async item => {
-          const matchId = (item.SK as string).replace('MATCH#', '')
+          const matchKey = (item.sk ?? item.SK) as string
+          if (!matchKey) return
+          const matchId = matchKey.replace('MATCH#', '')
           const gm = await ddb.send(
-            new GetCommand({ TableName: TABLE, Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' } })
+            new GetCommand({ TableName: TABLE, Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' } })
           )
           const m = gm.Item as any
           if (!m || m.status !== 'in_progress') return
@@ -79,9 +81,9 @@ export const handler = async (event: DynamoDBStreamEvent) => {
           await ddb.send(
             new UpdateCommand({
               TableName: TABLE,
-              Key: { PK: `MATCH#${matchId}`, SK: 'DETAILS' },
-              UpdateExpression: 'SET playerAssets = :pa',
-              ExpressionAttributeValues: { ':pa': updated },
+              Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' },
+              UpdateExpression: 'SET playerAssets = :pa, PK = :legacyPk, SK = :legacySk',
+              ExpressionAttributeValues: { ':pa': updated, ':legacyPk': `MATCH#${matchId}`, ':legacySk': 'DETAILS' },
             })
           )
         })

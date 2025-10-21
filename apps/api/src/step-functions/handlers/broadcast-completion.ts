@@ -102,9 +102,11 @@ async function markMatchBroadcasted(matchId: string): Promise<void> {
         pk: { S: `MATCH#${matchId}` },
         sk: { S: 'DETAILS' },
       },
-      UpdateExpression: 'SET matchCompletionBroadcastedAt = :ts',
+      UpdateExpression: 'SET matchCompletionBroadcastedAt = :ts, PK = :legacyPk, SK = :legacySk',
       ExpressionAttributeValues: {
         ':ts': { S: now },
+        ':legacyPk': { S: `MATCH#${matchId}` },
+        ':legacySk': { S: 'DETAILS' },
       },
     })
   );
@@ -121,7 +123,7 @@ async function deregisterInPlay(matchId: string): Promise<void> {
     const gm = await ddb.send(
       new QueryCommand({
         TableName: tableName,
-        KeyConditionExpression: 'PK = :pk',
+        KeyConditionExpression: 'pk = :pk',
         ExpressionAttributeValues: { ':pk': `MATCH#${matchId}` },
       })
     )
@@ -144,17 +146,22 @@ async function deregisterInPlay(matchId: string): Promise<void> {
         await ddb.send(
           new UpdateCommand({
             TableName: tableName,
-            Key: { PK: 'INPLAY#TICKER', SK: `${t.assetType}#${t.symbol}` },
-            UpdateExpression: 'ADD #count :negOne SET updatedAt = :now',
+            Key: { pk: 'INPLAY#TICKER', sk: `${t.assetType}#${t.symbol}` },
+            UpdateExpression: 'ADD #count :negOne SET updatedAt = :now, PK = :legacyPkTicker, SK = :legacySkTicker',
             ExpressionAttributeNames: { '#count': 'count' },
-            ExpressionAttributeValues: { ':negOne': -1, ':now': new Date().toISOString() },
+            ExpressionAttributeValues: {
+              ':negOne': -1,
+              ':now': new Date().toISOString(),
+              ':legacyPkTicker': 'INPLAY#TICKER',
+              ':legacySkTicker': `${t.assetType}#${t.symbol}`,
+            },
           })
         )
         // remove mapping
         await ddb.send(
           new DeleteCommand({
             TableName: tableName,
-            Key: { PK: `INPLAY#MAP#${t.symbol}`, SK: `MATCH#${matchId}` },
+            Key: { pk: `INPLAY#MAP#${t.symbol}`, sk: `MATCH#${matchId}` },
           })
         )
       })
