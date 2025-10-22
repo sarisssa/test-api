@@ -47,12 +47,48 @@ export default async function matchGatewayRoutes(fastify: FastifyInstance) {
 
           try {
             const data = JSON.parse(message.toString());
+            fastify.log.info({
+              connectionId,
+              userId,
+              action: data.action,
+              msg: 'About to call parseAndHandle',
+            });
+
             const result = await parseAndHandle(
               { fastify, connectionId, userId },
               data
             )
+
+            fastify.log.info({
+              connectionId,
+              userId,
+              action: data.action,
+              hasResult: !!result,
+              result: result,
+              msg: 'parseAndHandle completed',
+            });
+
             if (result) {
-              connection.socket.send(JSON.stringify(result))
+              const responseString = JSON.stringify(result);
+              fastify.log.info({
+                connectionId,
+                userId,
+                responseString,
+                msg: 'Sending response to client',
+              });
+              connection.socket.send(responseString);
+              fastify.log.info({
+                connectionId,
+                userId,
+                msg: 'Response sent successfully',
+              });
+            } else {
+              fastify.log.warn({
+                connectionId,
+                userId,
+                action: data.action,
+                msg: 'No result from parseAndHandle, not sending response',
+              });
             }
           } catch (error) {
             if (error instanceof Error) {

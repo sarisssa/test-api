@@ -445,7 +445,10 @@ async function createPlayer(
     accessToken: string;
   };
 
-  console.log(`   ✅ ${label} authenticated (userId=${body.user.userId})`);
+  console.log(
+    `   ✅ ${label} authenticated (userId=${body.user.userId})`,
+    `token=${body.accessToken}`
+  );
 
   return {
     label,
@@ -472,13 +475,54 @@ async function getJson<T>(url: string, token: string): Promise<T> {
 async function runAssetTests(token: string) {
   console.log('\n🧪 Running asset tests...');
 
+  // First, try to get NVDA directly to verify it exists
+  let assetDetail: Record<string, unknown>;
+  try {
+    assetDetail = await getJson<Record<string, unknown>>(
+      `${API_BASE_URL}/assets/NVDA`,
+      token
+    );
+    console.log(
+      '   📦 Fetched NVDA asset:',
+      JSON.stringify(assetDetail, null, 2).substring(0, 500)
+    );
+  } catch (error) {
+    throw new Error(
+      `Failed to fetch NVDA: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  if (assetDetail.Symbol !== 'NVDA') {
+    throw new Error(
+      `Asset detail retrieval failed for NVDA. Got Symbol: ${assetDetail.Symbol}`
+    );
+  }
+  console.log('   ✅ Asset detail retrieval passed for NVDA');
+  console.log(`      Symbol: ${assetDetail.Symbol}, Name: ${assetDetail.name}`);
+
+  // Now try the search
   const searchTerm = 'NV';
   const assets: unknown = await getJson(
-    `${API_BASE_URL}/assets?search=${encodeURIComponent(searchTerm)}&limit=200`,
+    `${API_BASE_URL}/assets?search=${encodeURIComponent(searchTerm)}&limit=100`,
     token
   );
 
-  if (!Array.isArray(assets) || assets.length === 0) {
+  console.log(`   🔍 Searching for '${searchTerm}'...`);
+  if (!Array.isArray(assets)) {
+    throw new Error('Asset search returned non-array response');
+  }
+
+  console.log(`   📊 Search returned ${assets.length} results`);
+  if (assets.length > 0) {
+    console.log(
+      `      Sample results: ${assets
+        .slice(0, 5)
+        .map((a: any) => a.Symbol)
+        .join(', ')}`
+    );
+  }
+
+  if (assets.length === 0) {
     throw new Error(
       'Asset search returned no results. Ensure assets are seeded and DynamoDB scan limit is sufficient.'
     );
@@ -487,16 +531,6 @@ async function runAssetTests(token: string) {
   console.log(
     `   ✅ Asset search returned ${assets.length} results for term '${searchTerm}'`
   );
-
-  const assetDetail = await getJson<Record<string, unknown>>(
-    `${API_BASE_URL}/assets/NVDA`,
-    token
-  );
-
-  if (assetDetail.Symbol !== 'NVDA') {
-    throw new Error('Asset detail retrieval failed for NVDA');
-  }
-  console.log('   ✅ Asset detail retrieval passed for NVDA');
 }
 
 async function runLobbyTests(players: PlayerAuth[], plan: LobbyAssetPlan) {
