@@ -1,8 +1,11 @@
-import { SocketStream } from '@fastify/websocket';
 import { FastifyInstance } from 'fastify';
+import type { WebSocket } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
 import { addConnection, removeConnection } from '../services/connection-manager.js';
 import { parseAndHandle } from '../ws/actions.js';
+
+type ManagedWebSocket = WebSocket & { id?: string };
+
 
 //TODO: Extract user id from JWT, do not pass user id into the payload!
 //TODO: Eventually move to AWS API Gateway - do not leverage local Fastify websocket
@@ -13,13 +16,13 @@ export default async function matchGatewayRoutes(fastify: FastifyInstance) {
       {
         websocket: true,
       } as const,
-      async (connection: SocketStream, req) => {
+      async (socket, req) => {
         const connectionId = uuidv4();
-
-        (connection.socket as any).id = connectionId; // Use 'as any' or proper type augmentation
+        const managedSocket = socket as ManagedWebSocket;
+        managedSocket.id = connectionId;
 
         // Register the connection in the local Fastify instance
-        addConnection(connectionId, connection.socket as any);
+        addConnection(connectionId, managedSocket);
 
         // Handshake auth: accept JWT via query (?token=) or Authorization header
         let userId: string | null = null
@@ -32,14 +35,14 @@ export default async function matchGatewayRoutes(fastify: FastifyInstance) {
           userId = decoded.userId
         } catch (err) {
           fastify.log.warn({ err, connectionId }, 'WebSocket auth failed')
-          connection.socket.send(JSON.stringify({ type: 'error', message: 'unauthorized' }))
-          connection.socket.close()
+          managedSocket.send(JSON.stringify({ type: 'error', message: 'unauthorized' }))
+          managedSocket.close()
           return
         }
 
         fastify.log.info({ connectionId, userId }, 'Client connected to matchmaking')
 
-        connection.socket.on('message', async message => {
+        managedSocket.on('message', async message => {
           fastify.log.info({
             rawMessage: message.toString(),
             msg: 'Received raw message',
@@ -76,13 +79,13 @@ export default async function matchGatewayRoutes(fastify: FastifyInstance) {
                 responseString,
                 msg: 'Sending response to client',
               });
-              connection.socket.send(responseString);
+              managedSocket.send(responseString);
               fastify.log.info({
                 connectionId,
                 userId,
                 msg: 'Response sent successfully',
               });
-            } else {
+            } else { 
               fastify.log.warn({
                 connectionId,
                 userId,
@@ -113,7 +116,7 @@ export default async function matchGatewayRoutes(fastify: FastifyInstance) {
               );
             }
 
-            connection.socket.send(
+            managedSocket.send(
               JSON.stringify({
                 type: 'error',
                 message: 'Failed to process request',
@@ -122,21 +125,19 @@ export default async function matchGatewayRoutes(fastify: FastifyInstance) {
           }
         });
 
-        connection.socket.on('error', error => {
+        managedSocket.on('error', error => {
           fastify.log.error(
             { error: error, connectionId: connectionId },
             'WebSocket error'
           );
         });
 
-        connection.socket.on('close', async () => {
-          const currentConnectionId = (connection.socket as any).id; // Retrieve the ID
-
+        managedSocket.on('close', async () => {
           // Remove the connection from the local map on socket close
-          removeConnection(currentConnectionId);
+          removeConnection(connectionId);
 
           fastify.log.info(
-            { connectionId: currentConnectionId, userId },
+            { connectionId, userId },
             `Client disconnected from matchmaking`
           );
           // TODO: Clean up player data from Redis when implementing disconnect handling
