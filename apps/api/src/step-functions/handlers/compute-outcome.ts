@@ -92,37 +92,32 @@ async function fetchMatch(
 
 /**
  * Fetch current asset price from DynamoDB
- * Tries STOCK, CRYPTO, COMMODITY prefixes
+ * Queries directly by ticker using ASSET#{ticker} pattern
  */
 async function fetchAssetPrice(
   tableName: string,
   ticker: string
 ): Promise<number | null> {
-  const assetTypes = ['STOCK', 'CRYPTO', 'COMMODITY'];
+  try {
+    const result = await dynamodb.send(
+      new GetItemCommand({
+        TableName: tableName,
+        Key: {
+          pk: { S: `ASSET#${ticker}` },
+          sk: { S: 'METADATA' },
+        },
+        ConsistentRead: true,
+      })
+    );
 
-  for (const assetType of assetTypes) {
-    try {
-      const result = await dynamodb.send(
-        new GetItemCommand({
-          TableName: tableName,
-          Key: {
-            pk: { S: `ASSET#${assetType}` },
-            sk: { S: ticker },
-          },
-          ConsistentRead: true,
-        })
-      );
-
-      if (result.Item) {
-        const asset = unmarshall(result.Item);
-        if (typeof asset.currentPrice === 'number') {
-          return asset.currentPrice;
-        }
+    if (result.Item) {
+      const asset = unmarshall(result.Item);
+      if (typeof asset.currentPrice === 'number') {
+        return asset.currentPrice;
       }
-    } catch (error) {
-      // Continue to next type
-      console.warn(`Failed to fetch ${assetType}#${ticker}:`, error);
     }
+  } catch (error) {
+    console.warn(`Failed to fetch price for ${ticker}:`, error);
   }
 
   return null;

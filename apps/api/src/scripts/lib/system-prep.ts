@@ -236,9 +236,9 @@ async function seedAssetPrices(assets: AssetSeed[]): Promise<void> {
   const items = assets.map(({ symbol, name, assetType }) => ({
     PutRequest: {
       Item: {
-        pk: `ASSET#${assetType}`,
-        sk: symbol,
-        EntityType: 'AssetPrice',
+        pk: `ASSET#${symbol}`,
+        sk: 'METADATA',
+        EntityType: 'Asset',
         AssetType: assetType,
         Symbol: symbol,
         name: name || symbol,

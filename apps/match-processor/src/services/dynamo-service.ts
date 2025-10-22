@@ -65,8 +65,8 @@ export const updateAssetPrice = async (
     const updateParams = {
       TableName: WAGE_TABLE_NAME,
       Key: {
-        pk: `ASSET#${assetType}`,
-        sk: symbol
+        pk: `ASSET#${symbol}`,
+        sk: 'METADATA'
       },
       UpdateExpression: 'SET currentPrice = :price, lastUpdated = :lastUpdated',
       ExpressionAttributeValues: {
@@ -102,8 +102,8 @@ export const batchUpdateAssetPrices = async (
       const updateParams = {
         TableName: WAGE_TABLE_NAME,
         Key: {
-          pk: `ASSET#${assetType}`,
-          sk: symbol
+          pk: `ASSET#${symbol}`,
+          sk: 'METADATA'
         },
         UpdateExpression: 'SET currentPrice = :price, lastUpdated = :lastUpdated',
         ExpressionAttributeValues: {
@@ -148,8 +148,8 @@ export const getAssetPriceRecords = async (
       const getParams = {
         TableName: WAGE_TABLE_NAME,
         Key: {
-          pk: `ASSET#${assetType}`,
-          sk: symbol
+          pk: `ASSET#${symbol}`,
+          sk: 'METADATA'
         }
       }
 

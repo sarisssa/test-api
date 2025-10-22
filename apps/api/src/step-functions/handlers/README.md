@@ -23,35 +23,39 @@ The settlement workflow consists of:
 **Purpose:** Compute match outcome after time expires
 
 **Input (from Step Functions):**
+
 ```typescript
 {
-  matchId: string
-  tableName: string
-  matchPk: string      // "MATCH#<matchId>"
-  matchSk: string      // "DETAILS"
+  matchId: string;
+  tableName: string;
+  matchPk: string; // "MATCH#<matchId>"
+  matchSk: string; // "DETAILS"
 }
 ```
 
 **Output (to `$.compute.Payload`):**
+
 ```typescript
 {
-  winnerId: string
-  loserId: string
-  finalScores: Record<string, number>     // playerId -> portfolio value
-  returns: Record<string, number>         // playerId -> percentage return
-  matchEndedAtIso: string                 // ISO 8601 timestamp
+  winnerId: string;
+  loserId: string;
+  finalScores: Record<string, number>; // playerId -> portfolio value
+  returns: Record<string, number>; // playerId -> percentage return
+  matchEndedAtIso: string; // ISO 8601 timestamp
 }
 ```
 
 **Logic:**
+
 1. Fetch match from DynamoDB
 2. Collect all asset tickers from both players
-3. Fetch current prices for all tickers from DynamoDB (`ASSET#<type>#<ticker>`)
+3. Fetch current prices for all tickers from DynamoDB (`ASSET#<ticker>` with sk: `METADATA`)
 4. Calculate portfolio total for each player: `Σ(shares × currentPrice)`
 5. Calculate percentage returns: `((finalValue - 100000) / 100000) × 100`
 6. Determine winner by highest return (tie → lexicographic player ID)
 
 **Environment Variables:**
+
 - `AWS_REGION` (default: `us-east-1`)
 - `DYNAMODB_URL` (optional, for LocalStack)
 - `WAGE_TABLE_NAME` (default: `WageTable`)
@@ -63,18 +67,20 @@ The settlement workflow consists of:
 **Purpose:** Broadcast `match_completed` event to players via WebSocket
 
 **Input (from Step Functions):**
+
 ```typescript
 {
-  matchId: string
-  winnerId: string
-  loserId: string
-  returns: Record<string, number>
+  matchId: string;
+  winnerId: string;
+  loserId: string;
+  returns: Record<string, number>;
 }
 ```
 
 **Output:** None (void)
 
 **Logic:**
+
 1. Fetch match from DynamoDB
 2. Check idempotency: skip if `matchCompletionBroadcastedAt` exists
 3. For each player:
@@ -83,6 +89,7 @@ The settlement workflow consists of:
 4. Mark match as broadcasted (set `matchCompletionBroadcastedAt`)
 
 **Message Format:**
+
 ```typescript
 {
   type: 'match_completed',
@@ -96,6 +103,7 @@ The settlement workflow consists of:
 ```
 
 **Environment Variables:**
+
 - `AWS_REGION` (default: `us-east-1`)
 - `DYNAMODB_URL` (optional, for LocalStack)
 - `WAGE_TABLE_NAME` (default: `WageTable`)
@@ -110,6 +118,7 @@ The settlement workflow consists of:
 **Purpose:** Award experience points to winner
 
 **Input:**
+
 ```typescript
 { matchId: string, winnerId: string, loserId: string, returns: Record<string, number> }
 ```
@@ -123,6 +132,7 @@ The settlement workflow consists of:
 **Purpose:** Award in-game currency (e.g., coins) to winner
 
 **Input:**
+
 ```typescript
 { matchId: string, winnerId: string, loserId: string, returns: Record<string, number> }
 ```
@@ -136,6 +146,7 @@ The settlement workflow consists of:
 **Purpose:** Trigger real-money payment processing (if applicable)
 
 **Input:**
+
 ```typescript
 { matchId: string, winnerId: string, loserId: string, returns: Record<string, number> }
 ```
@@ -149,6 +160,7 @@ The settlement workflow consists of:
 **Purpose:** Send match outcome events to analytics service
 
 **Input:**
+
 ```typescript
 { matchId: string, winnerId: string, loserId: string, returns: Record<string, number> }
 ```
@@ -173,12 +185,14 @@ Use the provided deployment script:
 ```
 
 The script will:
+
 1. Bundle TypeScript with esbuild
 2. Create ZIP packages
 3. Deploy to LocalStack (http://localhost:4566)
 4. Print ARNs to add to your `.env` file
 
 **Example output:**
+
 ```
 MATCH_COMPUTE_OUTCOME_FN_ARN=arn:aws:lambda:us-east-1:000000000000:function:match-compute-outcome
 MATCH_BROADCAST_COMPLETION_FN_ARN=arn:aws:lambda:us-east-1:000000000000:function:match-broadcast-completion
@@ -189,6 +203,7 @@ MATCH_BROADCAST_COMPLETION_FN_ARN=arn:aws:lambda:us-east-1:000000000000:function
 For production deployment, use your preferred Lambda deployment tool:
 
 **Option 1: AWS SAM**
+
 ```yaml
 # template.yaml
 Resources:
@@ -204,6 +219,7 @@ Resources:
 ```
 
 **Option 2: Terraform**
+
 ```hcl
 resource "aws_lambda_function" "compute_outcome" {
   function_name = "match-compute-outcome"
@@ -220,6 +236,7 @@ resource "aws_lambda_function" "compute_outcome" {
 ```
 
 **Option 3: Serverless Framework**
+
 ```yaml
 # serverless.yml
 functions:
@@ -305,6 +322,7 @@ cat response.json
 ### Retry Configuration
 
 All Lambdas use exponential backoff:
+
 - **ComputeOutcome**: 2 retries, 2s → 4s
 - **AwardPrizes branches**: 3 retries, 2s → 4s → 8s
 
@@ -325,12 +343,14 @@ If the match is already completed (e.g., forfeit), the DynamoDB update will fail
 ### CloudWatch Logs
 
 Lambda logs are available in CloudWatch Logs:
+
 - `/aws/lambda/match-compute-outcome`
 - `/aws/lambda/match-broadcast-completion`
 
 ### Metrics
 
 Key metrics to monitor:
+
 - Lambda duration (should be < 5s for compute-outcome)
 - Lambda error rate (should be < 1%)
 - DynamoDB `ConditionalCheckFailedException` rate (indicates forfeits)
@@ -338,6 +358,7 @@ Key metrics to monitor:
 ### Alarms
 
 Set CloudWatch alarms for:
+
 - Lambda errors > 5 in 5 minutes
 - Lambda duration > 10 seconds
 - Step Functions execution failures
@@ -349,19 +370,23 @@ Set CloudWatch alarms for:
 The settlement worker (`apps/api/src/services/settlement-worker.ts`) is being phased out in favor of Step Functions. Migration plan:
 
 ### Phase 1 (Current)
+
 - Keep settlement worker for local development
 - Use Step Functions in staging/production
 - Both paths coexist peacefully (worker checks `if (!match.winner)` before settling)
 
 ### Phase 2
+
 - Add feature flag `USE_SETTLEMENT_WORKER=false` in production `.env`
 - Settlement worker disabled; Step Functions handles all settlement
 
 ### Phase 3
+
 - Remove settlement worker code entirely once Step Functions proven in production
 - Update tests to use Step Functions mocks
 
 **Current Behavior:**
+
 - If Step Functions sets a winner, the settlement worker skips that match
 - If a forfeit happens, API completes the match and stops the Step Functions execution
 - No double-settlement risk
@@ -389,6 +414,7 @@ A: No, you need LocalStack or real AWS to run Step Functions. For pure unit test
 **Q: What's the expected match settlement latency?**
 
 A:
+
 - Wait state: 0ms (scheduled by Step Functions)
 - ComputeOutcome: ~500ms (DynamoDB queries + price lookups)
 - CompleteMatch: ~100ms (single DynamoDB update)
