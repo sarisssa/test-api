@@ -1,3 +1,4 @@
+import type { DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   BatchWriteCommand,
@@ -11,6 +12,16 @@ import {
   initializePhoneHashSalt,
 } from '../utils/phone-utils.js';
 
+process.on('uncaughtException', err => {
+  console.error('💥 Uncaught exception in seed-users script:', err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', reason => {
+  console.error('💥 Unhandled promise rejection in seed-users script:', reason);
+  process.exit(1);
+});
+
 config();
 
 const PHONE_HASH_SALT = process.env.PHONE_HASH_SALT;
@@ -19,11 +30,28 @@ if (!PHONE_HASH_SALT) {
 }
 initializePhoneHashSalt(PHONE_HASH_SALT);
 
-const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || 'wage-main-dev';
+const TABLE_NAME =
+  process.env.WAGE_TABLE_NAME ?? process.env.DYNAMODB_TABLE_NAME ?? 'WageTable';
 
-const client = new DynamoDBClient({
-  region: 'us-east-1',
-});
+const region = process.env.AWS_REGION ?? 'us-east-1';
+const endpoint =
+  process.env.DYNAMODB_URL ??
+  process.env.DYNAMODB_ENDPOINT ??
+  process.env.LOCALSTACK_ENDPOINT;
+
+const clientConfig: DynamoDBClientConfig = {
+  region,
+};
+
+if (endpoint) {
+  clientConfig.endpoint = endpoint;
+  clientConfig.credentials = {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? 'test',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? 'test',
+  };
+}
+
+const client = new DynamoDBClient(clientConfig);
 
 const dynamodb = DynamoDBDocumentClient.from(client);
 
@@ -39,6 +67,8 @@ interface TestUserData {
   };
   bio?: string;
 }
+
+type SeedUserItem = DynamoDBUserItem;
 
 const testUsers: TestUserData[] = [
   {
@@ -108,11 +138,11 @@ const testUsers: TestUserData[] = [
   },
 ];
 
-function transformUserToDynamoDB(userData: TestUserData): DynamoDBUserItem {
+function transformUserToDynamoDB(userData: TestUserData): SeedUserItem {
   const now = new Date().toISOString();
   const hashedPhoneNumber = hashPhoneNumber(userData.phoneNumber);
 
-  return {
+  const baseItem: DynamoDBUserItem = {
     pk: `USER#${hashedPhoneNumber}`,
     sk: 'PROFILE',
     EntityType: 'User',
@@ -132,9 +162,11 @@ function transformUserToDynamoDB(userData: TestUserData): DynamoDBUserItem {
     },
     bio: userData.bio,
   };
+
+  return baseItem;
 }
 
-async function batchWrite(items: DynamoDBUserItem[]) {
+async function batchWrite(items: SeedUserItem[]) {
   const BATCH_SIZE = 25;
   const batches = [];
 

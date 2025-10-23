@@ -1,4 +1,6 @@
 node_modules
+dist/
+**/dist/
 
 # Ignore Terraform state files
 *.tfstate
@@ -22,3 +24,4 @@ lambda-placeholder.zip
 **/*.tsbuildinfo
 
 *.local.tfvars
+apps/api/debug-logs/

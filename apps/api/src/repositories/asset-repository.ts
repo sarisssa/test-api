@@ -12,26 +12,58 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
     assetType?: AssetType,
     limit: number = 20
   ): Promise<DynamoDBAssetItem[]> => {
-    const params: ScanCommand['input'] = {
-      TableName: fastify.config.DYNAMODB_TABLE_NAME,
-      FilterExpression: 'contains(sk, :s) OR contains(#n, :s)',
-      ExpressionAttributeNames: {
-        '#n': 'name',
-      },
-      ExpressionAttributeValues: {
-        ':s': searchTerm,
-      },
-      Limit: limit,
+    // Build filter expression: search in name/Symbol, and filter by EntityType=Asset to reduce scan size
+    let filterExpression =
+      'EntityType = :entityType AND (contains(#sym, :s) OR contains(#n, :s))';
+    const expressionAttributeNames: Record<string, string> = {
+      '#n': 'name',
+      '#sym': 'Symbol',
+    };
+    const expressionAttributeValues: Record<string, any> = {
+      ':s': searchTerm,
+      ':entityType': 'Asset',
     };
 
     if (assetType) {
-      params.FilterExpression += ' AND AssetType = :at';
-      params.ExpressionAttributeValues![':at'] = assetType;
+      filterExpression += ' AND AssetType = :at';
+      expressionAttributeValues[':at'] = assetType;
     }
 
     try {
-      const { Items } = await fastify.dynamodb.send(new ScanCommand(params));
-      return (Items || []) as DynamoDBAssetItem[];
+      const results: DynamoDBAssetItem[] = [];
+      let lastEvaluatedKey: Record<string, any> | undefined;
+
+      // Paginate through all results until we have enough matches
+      do {
+        const params: ScanCommand['input'] = {
+          TableName: fastify.config.DYNAMODB_TABLE_NAME,
+          FilterExpression: filterExpression,
+          ExpressionAttributeNames: expressionAttributeNames,
+          ExpressionAttributeValues: expressionAttributeValues,
+          ExclusiveStartKey: lastEvaluatedKey,
+        };
+
+        const result = await fastify.dynamodb.send(new ScanCommand(params));
+        const items = (result.Items || []) as DynamoDBAssetItem[];
+        results.push(...items);
+
+        lastEvaluatedKey = result.LastEvaluatedKey;
+
+        // Stop if we have enough results
+        if (results.length >= limit) {
+          break;
+        }
+      } while (lastEvaluatedKey);
+
+      logger.info({
+        searchTerm,
+        assetType,
+        limit,
+        returnedCount: results.length,
+        msg: 'Asset search completed',
+      });
+
+      return results.slice(0, limit);
     } catch (error) {
       logger.error({
         error,
@@ -60,8 +92,24 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
         })
       );
 
+      logger.info({
+        ticker: upperTicker,
+        hasItem: !!result.Item,
+        itemKeys: result.Item ? Object.keys(result.Item) : [],
+        symbol: result.Item?.Symbol,
+        itemStringified: JSON.stringify(result.Item),
+        msg: 'Fetched asset by ticker',
+      });
+
       if (result.Item) {
-        return result.Item as DynamoDBAssetItem;
+        const assetItem = result.Item as DynamoDBAssetItem;
+        logger.info({
+          ticker: upperTicker,
+          castedItemKeys: Object.keys(assetItem),
+          castedItemStringified: JSON.stringify(assetItem),
+          msg: 'Repository: Returning casted item',
+        });
+        return assetItem;
       }
       return null;
     } catch (error) {

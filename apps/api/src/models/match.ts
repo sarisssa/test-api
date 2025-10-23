@@ -1,8 +1,8 @@
 import { PlayerAssetSelections } from '../types/match.js';
 
 export interface DynamoDBMatchItem {
-  PK: `MATCH#${string}`;
-  SK: 'DETAILS';
+  pk: `MATCH#${string}`;
+  sk: 'DETAILS';
   EntityType: 'Match';
 
   matchId: string;
@@ -19,7 +19,12 @@ export interface DynamoDBMatchItem {
   matchStartedAt?: string;
   matchTentativeEndTime?: string;
   matchEndedAt?: string;
+  matchSettlementExecutionArn?: string;
+  matchCompletionBroadcastedAt?: string; // Set by BroadcastCompletion Lambda
+  completionReason?: 'time_expired' | 'forfeited' | 'manual';
   winner?: string;
+  loser?: string;
+  finalScores?: Record<string, number>;
 
   // --- Match-Level Metadata for Price Updates ---
   lastPriceUpdateAt?: string;
@@ -27,8 +32,8 @@ export interface DynamoDBMatchItem {
 }
 
 export interface DynamoDBPlayerMatchItem {
-  PK: `USER#${string}`;
-  SK: `MATCH#${string}`;
+  pk: `USER#${string}`;
+  sk: `MATCH#${string}`;
   EntityType: 'PlayerMatch';
 
   matchId: string;

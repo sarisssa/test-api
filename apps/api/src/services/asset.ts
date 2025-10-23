@@ -31,7 +31,24 @@ export const getAssetByTicker = async (
   ticker: string
 ): Promise<DynamoDBAssetItem | null> => {
   try {
-    return await fastify.repositories.asset.fetchAssetByTickerFromDB(ticker);
+    fastify.log.info({
+      ticker,
+      msg: 'Service: About to call repository',
+    });
+
+    const result =
+      await fastify.repositories.asset.fetchAssetByTickerFromDB(ticker);
+
+    fastify.log.info({
+      ticker,
+      resultExists: !!result,
+      resultType: typeof result,
+      resultKeys: result ? Object.keys(result) : [],
+      resultStringified: JSON.stringify(result),
+      msg: 'Service: Received from repository',
+    });
+
+    return result;
   } catch (error) {
     fastify.log.error({
       ticker,

@@ -74,7 +74,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx_errors" {
 
 resource "aws_cloudwatch_metric_alarm" "alb_4xx_errors" {
   count = var.environment == "prd" ? 1 : 0
-  
+
   alarm_name          = "${var.project_name}-alb-4xx-errors-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
@@ -142,6 +142,86 @@ resource "aws_cloudwatch_metric_alarm" "healthy_host_count" {
 
   tags = {
     Name    = "${var.project_name}-healthy-host-alarm-${var.environment}"
+    Service = "Monitoring"
+  }
+}
+
+# ---------------------------------------------------
+# Match Processor Alarms
+# ---------------------------------------------------
+
+resource "aws_cloudwatch_metric_alarm" "match_processor_no_tasks" {
+  count = var.environment == "prd" ? 1 : 0
+
+  alarm_name          = "${var.project_name}-match-processor-no-tasks-${var.environment}"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "RunningTaskCount"
+  namespace           = "ECS/ContainerInsights"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "1"
+  alarm_description   = "Match processor has no running tasks"
+  alarm_actions       = [aws_sns_topic.alarms[0].arn]
+  treat_missing_data  = "breaching"
+
+  dimensions = {
+    ServiceName = aws_ecs_service.match_processor_service.name
+    ClusterName = aws_ecs_cluster.backend_cluster.name
+  }
+
+  tags = {
+    Name    = "${var.project_name}-match-processor-no-tasks-alarm-${var.environment}"
+    Service = "Monitoring"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "match_processor_cpu_high" {
+  count = var.environment == "prd" ? 1 : 0
+
+  alarm_name          = "${var.project_name}-match-processor-cpu-high-${var.environment}"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/ECS"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "80"
+  alarm_description   = "Match processor CPU utilization is above 80%"
+  alarm_actions       = [aws_sns_topic.alarms[0].arn]
+
+  dimensions = {
+    ServiceName = aws_ecs_service.match_processor_service.name
+    ClusterName = aws_ecs_cluster.backend_cluster.name
+  }
+
+  tags = {
+    Name    = "${var.project_name}-match-processor-cpu-alarm-${var.environment}"
+    Service = "Monitoring"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "match_processor_memory_high" {
+  count = var.environment == "prd" ? 1 : 0
+
+  alarm_name          = "${var.project_name}-match-processor-memory-high-${var.environment}"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "MemoryUtilization"
+  namespace           = "AWS/ECS"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "80"
+  alarm_description   = "Match processor memory utilization is above 80%"
+  alarm_actions       = [aws_sns_topic.alarms[0].arn]
+
+  dimensions = {
+    ServiceName = aws_ecs_service.match_processor_service.name
+    ClusterName = aws_ecs_cluster.backend_cluster.name
+  }
+
+  tags = {
+    Name    = "${var.project_name}-match-processor-memory-alarm-${var.environment}"
     Service = "Monitoring"
   }
 }

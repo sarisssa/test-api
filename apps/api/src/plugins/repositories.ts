@@ -8,6 +8,7 @@ import { createInviteRepository } from '../repositories/invite-repository.js';
 import { createMatchRepository } from '../repositories/match-repository.js';
 import { createMatchmakingRepository } from '../repositories/matchmaking-repository.js';
 import { createPerkRepository } from '../repositories/perk-repository.js';
+import { createRefreshTokenRepository } from '../repositories/refresh-token-repository.js';
 import { createUserRepository } from '../repositories/user-repository.js';
 
 declare module 'fastify' {
@@ -22,6 +23,7 @@ declare module 'fastify' {
       friend: ReturnType<typeof createFriendRepository>;
       auth: ReturnType<typeof createAuthRepository>;
       challenge: ReturnType<typeof createChallengeRepository>;
+      refreshToken: ReturnType<typeof createRefreshTokenRepository>;
     };
   }
 }
@@ -37,6 +39,7 @@ export default fp(async (fastify: FastifyInstance) => {
     friend: createFriendRepository(fastify),
     auth: createAuthRepository(fastify),
     challenge: createChallengeRepository(fastify),
+    refreshToken: createRefreshTokenRepository(fastify),
   };
 
   fastify.decorate('repositories', repositories);
