@@ -35,12 +35,12 @@ async function createTable() {
   const params = {
     TableName: TABLE_NAME,
     KeySchema: [
-      { AttributeName: 'PK', KeyType: KeyType.HASH },
-      { AttributeName: 'SK', KeyType: KeyType.RANGE },
+      { AttributeName: 'pk', KeyType: KeyType.HASH },
+      { AttributeName: 'sk', KeyType: KeyType.RANGE },
     ],
     AttributeDefinitions: [
-      { AttributeName: 'PK', AttributeType: ScalarAttributeType.S },
-      { AttributeName: 'SK', AttributeType: ScalarAttributeType.S },
+      { AttributeName: 'pk', AttributeType: ScalarAttributeType.S },
+      { AttributeName: 'sk', AttributeType: ScalarAttributeType.S },
       {
         AttributeName: 'hashedPhoneNumber',
         AttributeType: ScalarAttributeType.S,

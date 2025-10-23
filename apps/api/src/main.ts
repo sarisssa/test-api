@@ -11,16 +11,21 @@ import authPlugin from './plugins/auth.js';
 import dynamodbPlugin from './plugins/dynamodb.js';
 import repositoriesPlugin from './plugins/repositories.js';
 import s3Plugin from './plugins/s3.js';
+import stepFunctionsPlugin from './plugins/step-functions.js';
 import swaggerPlugin from './plugins/swagger.js';
 import twilioPlugin from './plugins/twilio.js';
 import assetRoutes from './routes/asset.js';
 import authRoutes from './routes/auth.js';
 import healthRoutes from './routes/health.js';
+import matchGatewayRoutes from './routes/match-gateway.js';
+import metricsRoutes from './routes/metrics.js';
 import perkRoutes from './routes/perks.js';
 import userRoutes from './routes/user.js';
 import { startMatchmakingWorker } from './services/matchmaking-worker.js';
 import { initMatchmaking } from './services/matchmaking.js';
+import { startSettlementWorker } from './services/settlement-worker.js';
 import { initializePhoneHashSalt } from './utils/phone-utils.js';
+import { buildFastifyRedisOptions } from './utils/redis.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -40,6 +45,14 @@ async function buildApp(): Promise<FastifyInstance> {
 
   initializePhoneHashSalt(fastify.config.PHONE_HASH_SALT);
 
+  if (
+    fastify.config.DYNAMODB_TABLE_NAME &&
+    (!fastify.config.WAGE_TABLE_NAME ||
+      fastify.config.WAGE_TABLE_NAME === 'WageTable')
+  ) {
+    fastify.config.WAGE_TABLE_NAME = fastify.config.DYNAMODB_TABLE_NAME;
+  }
+
   await fastify.register(cors);
   await fastify.register(swaggerPlugin);
   await fastify.register(jwt, {
@@ -48,12 +61,20 @@ async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(auth);
   await fastify.register(authPlugin);
 
-  await fastify.register(redis, {
-    url: fastify.config.REDIS_URL,
-    closeClient: true,
-  });
+  await fastify.register(
+    redis,
+    buildFastifyRedisOptions(
+      fastify.config.REDIS_URL,
+      fastify.config.REDIS_TLS_REJECT_UNAUTHORIZED,
+      {
+        closeClient: true,
+        connectTimeout: 30_000,
+      }
+    )
+  );
 
   await fastify.register(dynamodbPlugin);
+  await fastify.register(stepFunctionsPlugin);
   await fastify.register(s3Plugin);
   await fastify.register(twilioPlugin);
   await fastify.register(repositoriesPlugin);
@@ -67,8 +88,11 @@ async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(fastifyWebsocket);
   await startMatchmakingWorker(fastify);
   await initMatchmaking(fastify);
+  await startSettlementWorker(fastify);
 
   await fastify.register(healthRoutes);
+  await fastify.register(matchGatewayRoutes, { prefix: '/match-gateway' });
+  await fastify.register(metricsRoutes);
   await fastify.register(assetRoutes, { prefix: '/assets' });
   await fastify.register(authRoutes, { prefix: '/auth' });
   await fastify.register(perkRoutes, { prefix: '/perks' });

@@ -20,8 +20,8 @@ const docClient = DynamoDBDocumentClient.from(client);
 
 async function createTestMatch() {
   const match = {
-    PK: `MATCH#${matchId}`,
-    SK: 'DETAILS',
+    pk: `MATCH#${matchId}`,
+    sk: 'DETAILS',
     EntityType: 'Match',
     matchId,
     players: ['420', '421'],

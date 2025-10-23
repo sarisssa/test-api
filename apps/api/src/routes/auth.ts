@@ -1,5 +1,10 @@
 import { FastifyInstance } from 'fastify';
-import { refreshAuthTokens, sendOtp, verifyOtp } from '../services/auth.js';
+import {
+  refreshAuthTokens,
+  refreshSession,
+  sendOtp,
+  verifyOtp,
+} from '../services/auth.js';
 import {
   RefreshTokenBody,
   refreshTokenJsonSchema,
@@ -76,8 +81,10 @@ export default async function authRoutes(fastify: FastifyInstance) {
           message: verifyResult.isNewUser
             ? 'Account created successfully'
             : 'Logged in successfully',
+          token: verifyResult.token,
           accessToken: verifyResult.accessToken,
           refreshToken: verifyResult.refreshToken,
+          refreshTokenExpiresAt: verifyResult.refreshTokenExpiresAt,
           user: verifyResult.user,
         });
       } catch (error) {
@@ -157,6 +164,34 @@ export default async function authRoutes(fastify: FastifyInstance) {
           statusCode: 500,
           error: 'Internal Server Error',
           message: 'An unexpected error occurred during token refresh.',
+        });
+      }
+    }
+  );
+
+  fastify.post<{ Body: RefreshTokenBody }>(
+    '/token/refresh',
+    {
+      schema: {
+        body: refreshTokenJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { refreshToken } = request.body;
+        const tokens = await refreshSession(fastify, refreshToken);
+        reply.send({
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
+        });
+      } catch (error) {
+        fastify.log.error({
+          error,
+          msg: 'Failed to refresh session',
+        });
+        reply.status(401).send({
+          message: 'Invalid or expired refresh token',
         });
       }
     }

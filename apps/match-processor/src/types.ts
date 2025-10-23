@@ -35,16 +35,21 @@ export interface Match {
   matchStartedAt?: string
   matchTentativeEndTime?: string
   matchEndedAt?: string
+  matchSettlementExecutionArn?: string
+  completionReason?: 'time_expired' | 'forfeited' | 'manual'
   playerAssets: Record<string, PlayerAssets>
   players: string[]
-  SK: string
+  sk: string
   portfolios: Record<string, Portfolio>
   assetSelectionEndedAt?: string
-  PK: string
+  pk: string
   assetSelectionStartedAt?: string
   matchId: string
   status: 'asset_selection' | 'in_progress' | 'completed' | 'cancelled'
   winnerId?: string
+  winner?: string
+  loser?: string
+  finalScores?: Record<string, number>
 }
 
 export interface PriceData {

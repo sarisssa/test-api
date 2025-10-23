@@ -1,14 +1,28 @@
 {
   "extends": "../../tsconfig.json",
+  "resolveJsonModule": true,
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
     "paths": {
-      "wage-shared": ["../../packages/wage-shared/src"],
-      "wage-shared/*": ["../../packages/wage-shared/src/*"]
+      "wage-shared": [
+        "../../packages/wage-shared/src"
+      ],
+      "wage-shared/*": [
+        "../../packages/wage-shared/src/*"
+      ]
     }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"],
-  "references": [{ "path": "../../packages/wage-shared" }]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ],
+  "references": [
+    {
+      "path": "../../packages/wage-shared"
+    }
+  ]
 }

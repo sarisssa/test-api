@@ -12,6 +12,8 @@ export const envSchema: FastifyEnvOptions['schema'] = {
     'TWILIO_ACCOUNT_SID',
     'TWILIO_AUTH_TOKEN',
     'TWILIO_VERIFY_SERVICE_SID',
+    'WAGE_TABLE_NAME',
+    'REDIS_TLS_REJECT_UNAUTHORIZED',
   ],
   properties: {
     AWS_REGION: {
@@ -29,6 +31,10 @@ export const envSchema: FastifyEnvOptions['schema'] = {
     S3_BUCKET_NAME: {
       type: 'string',
       minLength: 1,
+      default: 'local-bucket',
+    },
+    S3_ENDPOINT: {
+      type: 'string',
     },
     JWT_SECRET: {
       type: 'string',
@@ -58,6 +64,30 @@ export const envSchema: FastifyEnvOptions['schema'] = {
       type: 'string',
       minLength: 1,
     },
+    MATCH_SETTLEMENT_STATE_MACHINE_ARN: {
+      type: 'string',
+      default: '',
+    },
+    STEP_FUNCTIONS_ENDPOINT: {
+      type: 'string',
+      default: '',
+    },
+    WAGE_TABLE_NAME: {
+      type: 'string',
+      minLength: 1,
+    },
+    REDIS_TLS_REJECT_UNAUTHORIZED: {
+      type: 'string',
+      default: 'false',
+    },
+    USE_TWILIO_STUB: {
+      type: 'string',
+      default: 'false',
+    },
+    PRICE_STATUS_STALE_THRESHOLD_SECONDS: {
+      type: 'string',
+      default: '180',
+    },
     HOST: {
       type: 'string',
       default: '0.0.0.0',
@@ -71,6 +101,10 @@ export const envSchema: FastifyEnvOptions['schema'] = {
       type: 'number',
       default: 3000,
     },
+    MAX_CONCURRENT_MATCHES: {
+      type: 'string',
+      default: '0',
+    },
   },
 };
 
@@ -79,6 +113,7 @@ export type Env = {
   DYNAMODB_TABLE_NAME: string;
   DYNAMODB_URL?: string;
   S3_BUCKET_NAME: string;
+  S3_ENDPOINT?: string;
   JWT_SECRET: string;
   PHONE_HASH_SALT: string;
   REDIS_URL: string;
@@ -86,7 +121,14 @@ export type Env = {
   TWILIO_ACCOUNT_SID: string;
   TWILIO_AUTH_TOKEN: string;
   TWILIO_VERIFY_SERVICE_SID: string;
+  MATCH_SETTLEMENT_STATE_MACHINE_ARN?: string;
   HOST: string;
   NODE_ENV: 'development' | 'production' | 'test';
   PORT: number;
+  WAGE_TABLE_NAME: string;
+  REDIS_TLS_REJECT_UNAUTHORIZED: string;
+  STEP_FUNCTIONS_ENDPOINT?: string;
+  USE_TWILIO_STUB?: string;
+  PRICE_STATUS_STALE_THRESHOLD_SECONDS: string;
+  MAX_CONCURRENT_MATCHES?: string;
 };

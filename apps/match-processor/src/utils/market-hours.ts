@@ -27,6 +27,12 @@ export const isCommodityMarketOpen = (): boolean => {
 }
 
 export const shouldFetchAssetType = (assetType: AssetType): boolean => {
+  if ((process.env.MATCH_PROCESSOR_FORCE_MARKET_OPEN ?? '').toLowerCase() === 'true') {
+    return true
+  }
+  if ((process.env.MATCH_PROCESSOR_FORCE_MARKET_CLOSED ?? '').toLowerCase() === 'true') {
+    return assetType === AssetType.CRYPTO
+  }
   switch (assetType) {
     case AssetType.CRYPTO:
       return true // Crypto markets are always open

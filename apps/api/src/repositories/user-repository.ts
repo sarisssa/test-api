@@ -22,22 +22,65 @@ export const createUserRepository = (fastify: FastifyInstance) => {
   );
   const { log: logger } = fastify;
 
+  const buildUserKey = (hashedPhoneNumber: string) => ({
+    pk: `USER#${hashedPhoneNumber}` as const,
+    sk: 'PROFILE' as const,
+  });
+
+  const normaliseUserItem = (item: DynamoDBUserItem): DynamoDBUserItem => {
+    return {
+      ...item,
+      pk: item.pk,
+      sk: item.sk,
+    };
+  };
+
+  const getUserItemWithLegacyKeys = (
+    item: DynamoDBUserItem
+  ): DynamoDBUserItem => {
+    return normaliseUserItem(item);
+  };
+
   const fetchUserByPhone = async (
     phoneNumber: string
   ): Promise<DynamoDBUserItem | undefined> => {
     const hashedPhoneNumber = hashPhoneNumber(phoneNumber);
+    const tableName = fastify.config.DYNAMODB_TABLE_NAME;
+    const key = buildUserKey(hashedPhoneNumber);
 
-    const result = await dynamodb.send(
-      new GetCommand({
-        TableName: fastify.config.DYNAMODB_TABLE_NAME,
-        Key: {
-          pk: `USER#${hashedPhoneNumber}`,
-          sk: 'PROFILE',
-        },
-      })
-    );
+    try {
+      const result = await dynamodb.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: key,
+        })
+      );
 
-    return result.Item as DynamoDBUserItem | undefined;
+      if (!result.Item) {
+        return undefined;
+      }
+
+      return getUserItemWithLegacyKeys(result.Item as DynamoDBUserItem);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'ValidationException') {
+        const legacyResult = await dynamodb.send(
+          new GetCommand({
+            TableName: tableName,
+            Key: {
+              pk: key.pk,
+              sk: key.sk,
+            },
+          })
+        );
+
+        if (!legacyResult.Item) {
+          return undefined;
+        }
+
+        return getUserItemWithLegacyKeys(legacyResult.Item as DynamoDBUserItem);
+      }
+      throw error;
+    }
   };
 
   const persistNewUser = async (
@@ -46,10 +89,11 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     const hashedPhoneNumber = hashPhoneNumber(phoneNumber);
     const normalizedPhone = formatPhoneNumber(phoneNumber);
     const userId = uuidv4();
+    const key = buildUserKey(hashedPhoneNumber);
 
     const user: DynamoDBUserItem = {
-      pk: `USER#${hashedPhoneNumber}`,
-      sk: 'PROFILE',
+      pk: key.pk,
+      sk: key.sk,
       EntityType: 'User',
       userId,
       hashedPhoneNumber,
@@ -70,7 +114,7 @@ export const createUserRepository = (fastify: FastifyInstance) => {
       await dynamodb.send(
         new PutCommand({
           TableName: fastify.config.DYNAMODB_TABLE_NAME,
-          Item: user,
+          Item: getUserItemWithLegacyKeys(user),
           ConditionExpression: 'attribute_not_exists(pk)',
         })
       );
@@ -117,12 +161,17 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     user: DynamoDBUserItem
   ): Promise<void> => {
     try {
+      const key = buildUserKey(user.hashedPhoneNumber);
       await dynamodb.send(
-        new PutCommand({
+        new UpdateCommand({
           TableName: fastify.config.DYNAMODB_TABLE_NAME,
-          Item: {
-            ...user,
-            lastLoggedIn: new Date().toISOString(),
+          Key: {
+            pk: key.pk,
+            sk: key.sk,
+          },
+          UpdateExpression: 'SET lastLoggedIn = :lastLoggedIn',
+          ExpressionAttributeValues: {
+            ':lastLoggedIn': new Date().toISOString(),
           },
         })
       );
@@ -132,6 +181,27 @@ export const createUserRepository = (fastify: FastifyInstance) => {
         msg: 'User last login updated',
       });
     } catch (error) {
+      if (error instanceof Error && error.name === 'ValidationException') {
+        await dynamodb.send(
+          new UpdateCommand({
+            TableName: fastify.config.DYNAMODB_TABLE_NAME,
+            Key: {
+              pk: user.pk,
+              sk: user.sk,
+            },
+            UpdateExpression: 'SET lastLoggedIn = :lastLoggedIn',
+            ExpressionAttributeValues: {
+              ':lastLoggedIn': new Date().toISOString(),
+            },
+          })
+        );
+        logger.info({
+          userId: user.userId,
+          msg: 'User last login updated using legacy key casing',
+        });
+        return;
+      }
+
       logger.error({
         userId: user.userId,
         error,
@@ -157,7 +227,9 @@ export const createUserRepository = (fastify: FastifyInstance) => {
       const result = await dynamodb.send(new ScanCommand(scanParams));
 
       if (result.Items && result.Items.length > 0) {
-        const user = result.Items[0] as DynamoDBUserItem;
+        const user = getUserItemWithLegacyKeys(
+          result.Items[0] as DynamoDBUserItem
+        );
 
         return user;
       }
@@ -194,7 +266,7 @@ export const createUserRepository = (fastify: FastifyInstance) => {
       );
 
       if (result.Items && result.Items.length > 0) {
-        return result.Items[0] as DynamoDBUserItem;
+        return getUserItemWithLegacyKeys(result.Items[0] as DynamoDBUserItem);
       }
 
       return undefined;
@@ -301,19 +373,53 @@ export const createUserRepository = (fastify: FastifyInstance) => {
       if (!user) {
         throw new Error('User not found');
       }
+      const tableName = fastify.config.DYNAMODB_TABLE_NAME;
+      const variations: Array<{
+        pkAttr: string;
+        skAttr: string;
+        pkValue?: string;
+      }> = [{ pkAttr: 'pk', skAttr: 'sk', pkValue: user.pk }];
 
-      const result = await dynamodb.send(
-        new QueryCommand({
-          TableName: fastify.config.DYNAMODB_TABLE_NAME,
-          KeyConditionExpression: 'pk = :pk AND begins_with(sk, :skPrefix)',
-          ExpressionAttributeValues: {
-            ':pk': user.pk,
-            ':skPrefix': 'MATCH#',
-          },
-        })
-      );
+      for (const variation of variations) {
+        const { pkAttr, skAttr, pkValue } = variation;
+        if (!pkValue) {
+          continue;
+        }
 
-      return (result.Items || []) as DynamoDBPlayerMatchItem[];
+        try {
+          const result = await dynamodb.send(
+            new QueryCommand({
+              TableName: tableName,
+              KeyConditionExpression: `#pk = :pk AND begins_with(#sk, :skPrefix)`,
+              ExpressionAttributeNames: {
+                '#pk': pkAttr,
+                '#sk': skAttr,
+              },
+              ExpressionAttributeValues: {
+                ':pk': pkValue,
+                ':skPrefix': 'MATCH#',
+              },
+            })
+          );
+
+          return (result.Items || []) as DynamoDBPlayerMatchItem[];
+        } catch (queryError) {
+          if (
+            !(queryError instanceof Error) ||
+            queryError.name !== 'ValidationException'
+          ) {
+            throw queryError;
+          }
+          logger.warn({
+            userId,
+            pkAttr,
+            message: queryError.message,
+            msg: 'Query using key casing failed, attempting alternative.',
+          });
+        }
+      }
+
+      throw new Error('Unable to query user matches with provided key schema');
     } catch (error) {
       logger.error({
         userId,
