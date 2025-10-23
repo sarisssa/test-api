@@ -20,6 +20,7 @@ export interface DynamoDBMatchItem {
   matchTentativeEndTime?: string;
   matchEndedAt?: string;
   matchSettlementExecutionArn?: string;
+  matchCompletionBroadcastedAt?: string; // Set by BroadcastCompletion Lambda
   completionReason?: 'time_expired' | 'forfeited' | 'manual';
   winner?: string;
   loser?: string;

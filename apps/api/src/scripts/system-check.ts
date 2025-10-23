@@ -187,10 +187,20 @@ const printMatchesForPlayers = async (label: string, players: PlayerAuth[]) => {
     status: m.status,
     reason: m.completionReason,
     winner: m.winner,
+    settlementMethod: m.matchSettlementExecutionArn
+      ? '✅ Step Functions'
+      : '⚠️  Settlement Worker (fallback)',
+    broadcastLambdaRan: m.matchCompletionBroadcastedAt ? '✅ Yes' : '❌ No',
   });
   console.log(`\n🔎 Matches for ${label}:`);
-  console.log(`   ${a.label} (${a.userId}):`, JSON.stringify(ma.map(fmt)));
-  console.log(`   ${b.label} (${b.userId}):`, JSON.stringify(mb.map(fmt)));
+  console.log(
+    `   ${a.label} (${a.userId}):`,
+    JSON.stringify(ma.map(fmt), null, 2)
+  );
+  console.log(
+    `   ${b.label} (${b.userId}):`,
+    JSON.stringify(mb.map(fmt), null, 2)
+  );
 };
 
 // Simple NYSE market-hours check (ET): Mon–Fri 9:30–16:00
@@ -895,13 +905,65 @@ async function runForfeitScenario(
   }
 }
 
+async function verifyStepFunctionsExecution(
+  match: DynamoDBMatchItem,
+  label: string
+): Promise<boolean> {
+  console.log(
+    `\n🔍 Checking Step Functions execution for ${label} match (${match.matchId})...`
+  );
+
+  if (!match.matchSettlementExecutionArn) {
+    console.warn(
+      '⚠️  WARNING: Match completed WITHOUT Step Functions execution!'
+    );
+    console.warn(
+      '   This means the settlement-worker fallback handled completion.'
+    );
+    console.warn('   Step Functions and Lambdas were NOT actually invoked!');
+    console.warn(
+      '   To use Step Functions in production, ensure MATCH_SETTLEMENT_STATE_MACHINE_ARN is set.'
+    );
+    return false;
+  }
+
+  console.log(
+    `   ✅ Step Functions execution ARN: ${match.matchSettlementExecutionArn}`
+  );
+  console.log('   ✅ Step Functions workflow was started');
+
+  // Check for Lambda execution markers
+  if (match.matchCompletionBroadcastedAt) {
+    console.log(
+      `   ✅ BroadcastCompletion Lambda executed (broadcasted at ${match.matchCompletionBroadcastedAt})`
+    );
+  } else {
+    console.warn('   ⚠️  BroadcastCompletion Lambda may not have executed');
+    console.warn('      (matchCompletionBroadcastedAt field not set)');
+  }
+
+  // For time-expired matches, winner should be set by ComputeOutcome Lambda
+  // (not by settlement worker)
+  if (match.completionReason === 'time_expired' && match.winner) {
+    console.log(
+      '   ✅ ComputeOutcome Lambda likely executed (winner set for time_expired match)'
+    );
+  }
+
+  return true;
+}
+
 async function verifyComputeOutcome(
   match: DynamoDBMatchItem,
   label: string
 ): Promise<void> {
   console.log(
-    `\n🧮 Verifying compute-outcome handler for ${label} match (${match.matchId})...`
+    `\n🧮 Verifying compute-outcome handler logic for ${label} match (${match.matchId})...`
   );
+  console.log(
+    '   (Note: This directly calls the handler function to verify its logic,'
+  );
+  console.log('    not to verify Lambda execution by Step Functions)');
   const outcome = await computeOutcomeHandler({
     matchId: match.matchId,
     tableName: DYNAMODB_TABLE,
@@ -926,6 +988,19 @@ async function main() {
   console.log(`   Redis URL: ${REDIS_URL}`);
   console.log(`   API base: ${API_BASE_URL}`);
   console.log(`   WS endpoint: ${WS_URL}`);
+
+  // Check Step Functions configuration
+  const stepFunctionsArn = process.env.MATCH_SETTLEMENT_STATE_MACHINE_ARN;
+  console.log('\n⚙️  Settlement Configuration:');
+  if (stepFunctionsArn) {
+    console.log(`   ✅ Step Functions ARN configured: ${stepFunctionsArn}`);
+    console.log('   ✅ Matches will use Step Functions + Lambda settlement');
+    console.log('   ✅ This run WILL test the actual AWS infrastructure');
+  } else {
+    console.log('   ⚠️  MATCH_SETTLEMENT_STATE_MACHINE_ARN not configured');
+    console.log('   ⚠️  Matches will use settlement-worker fallback');
+    console.log('   ⚠️  Step Functions and Lambdas will NOT be tested');
+  }
 
   await ensureDynamoTable();
   await ensureStepFunctionsStateMachine();
@@ -998,8 +1073,16 @@ async function main() {
   await printMatchesForPlayers('Players A/B', playersAB);
   await printMatchesForPlayers('Players C/D', playersCD);
 
+  // Track Step Functions execution status
+  let timedMatchUsedStepFunctions = false;
+  let forfeitMatchUsedStepFunctions = false;
+
   // Log outcomes and percentage returns
   if (timedMatch.completedMatch) {
+    timedMatchUsedStepFunctions = await verifyStepFunctionsExecution(
+      timedMatch.completedMatch,
+      'timed'
+    );
     await verifyComputeOutcome(timedMatch.completedMatch, 'timed');
     const ids = [playersCD[0].userId, playersCD[1].userId];
     const totals = calculatePortfolioTotals(timedMatch.completedMatch, ids);
@@ -1028,6 +1111,10 @@ async function main() {
   }
 
   if (forfeitResult?.completedMatch) {
+    forfeitMatchUsedStepFunctions = await verifyStepFunctionsExecution(
+      forfeitResult.completedMatch,
+      'forfeit'
+    );
     await verifyComputeOutcome(forfeitResult.completedMatch, 'forfeit');
     const ids = [playersAB[0].userId, playersAB[1].userId];
     const totals = calculatePortfolioTotals(forfeitResult.completedMatch, ids);
@@ -1061,6 +1148,67 @@ async function main() {
   console.log('\n🎉 System check complete!');
   if (timedMatch.matchStartedAt) {
     console.log(`   Timed match started at: ${timedMatch.matchStartedAt}`);
+  }
+
+  // Summary
+  console.log('\n📊 Settlement Method Summary:');
+  if (timedMatchUsedStepFunctions && forfeitMatchUsedStepFunctions) {
+    console.log('   ✅ All matches used Step Functions + Lambda settlement');
+    console.log('   ✅ System is ready for AWS deployment with Step Functions');
+  } else if (!timedMatchUsedStepFunctions && !forfeitMatchUsedStepFunctions) {
+    console.log(
+      '   ⚠️  All matches used settlement-worker fallback (not Step Functions)'
+    );
+    console.log(
+      '   ⚠️  Step Functions and Lambdas were NOT tested in this run'
+    );
+    console.log('   ⚠️  Before AWS deployment, ensure:');
+    console.log('      1. MATCH_SETTLEMENT_STATE_MACHINE_ARN is configured');
+    console.log(
+      '      2. Lambdas are deployed (npm run deploy:lambdas -w api)'
+    );
+    console.log(
+      '      3. Step Functions state machine exists (npm run setup:step-functions -w api)'
+    );
+  } else {
+    console.log('   ⚠️  Mixed settlement methods used:');
+    console.log(
+      `      Timed match: ${timedMatchUsedStepFunctions ? 'Step Functions ✅' : 'Settlement Worker ⚠️'}`
+    );
+    console.log(
+      `      Forfeit match: ${forfeitMatchUsedStepFunctions ? 'Step Functions ✅' : 'Settlement Worker ⚠️'} (expected for forfeits)`
+    );
+  }
+
+  // Lambda execution verification
+  const timedBroadcastLambda =
+    timedMatch.completedMatch?.matchCompletionBroadcastedAt;
+  const forfeitBroadcastLambda =
+    forfeitResult?.completedMatch?.matchCompletionBroadcastedAt;
+
+  console.log('\n📡 Lambda Execution Verification:');
+  console.log(
+    `   Timed match BroadcastCompletion Lambda: ${timedBroadcastLambda ? '✅ Executed' : '❌ Not executed'}`
+  );
+  console.log(
+    `   Forfeit match BroadcastCompletion Lambda: ${forfeitBroadcastLambda ? '✅ Executed' : '❌ Not executed'}`
+  );
+
+  if (timedBroadcastLambda) {
+    console.log('\n✅ CONFIRMED: Lambdas are being invoked by Step Functions!');
+    console.log(
+      '   The AWS infrastructure (Step Functions + Lambdas) is working correctly.'
+    );
+  } else if (timedMatchUsedStepFunctions) {
+    console.warn(
+      '\n⚠️  WARNING: Step Functions started but Lambda marker not found!'
+    );
+    console.warn('   This could mean:');
+    console.warn('   - Lambda failed to execute');
+    console.warn('   - Lambda executed but failed to set the marker');
+    console.warn(
+      '   - Settlement worker completed match before Lambda could run'
+    );
   }
 }
 
