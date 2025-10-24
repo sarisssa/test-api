@@ -163,7 +163,7 @@ function transformPerkToDynamoDB(perk: PerkSeedData): SeedPerkItem {
   const now = new Date().toISOString();
 
   const baseItem: DynamoDBPerkItem = {
-    pk: `PERK#${perk.perkName.toUpperCase()}`,
+    pk: `PERK#${perk.name.toUpperCase()}`,
     sk: 'METADATA',
     EntityType: 'Perk',
     name: perk.name,

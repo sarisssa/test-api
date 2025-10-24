@@ -1,9 +1,9 @@
 declare module 'fastify' {
   interface FastifySchema {
-    tags?: string[];
+    tags?: readonly string[];
     description?: string;
-    consumes?: string[];
-    security?: Array<{ [key: string]: string[] }>;
+    consumes?: readonly string[];
+    security?: readonly { [securityLabel: string]: readonly string[] }[];
   }
 }
 
@@ -41,6 +41,5 @@ declare module 'fastify' {
       phoneNumber: string;
       type: 'access_token' | 'refresh_token';
     };
-    file(): Promise<import('@fastify/multipart').MultipartFile | undefined>;
   }
 }

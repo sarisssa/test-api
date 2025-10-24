@@ -70,12 +70,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       try {
         const { phoneNumber, code } = request.body;
-        const verifyResult = await verifyOtp(
-          fastify,
-          phoneNumber,
-          code,
-          request
-        );
+        const verifyResult = await verifyOtp(fastify, phoneNumber, code);
 
         reply.send({
           message: verifyResult.isNewUser

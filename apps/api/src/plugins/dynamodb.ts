@@ -33,7 +33,7 @@ async function dynamodbPlugin(fastify: FastifyInstance) {
     );
     fastify.log.info(`DynamoDB connected to ${fastify.config.AWS_REGION}`);
   } catch (error) {
-    fastify.log.error('DynamoDB connection failed:', error);
+    fastify.log.error({ error }, 'DynamoDB connection failed:');
     throw error;
   }
 
