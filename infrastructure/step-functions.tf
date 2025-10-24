@@ -115,9 +115,9 @@ resource "aws_sfn_state_machine" "match_settlement" {
     StartAt = "WaitForMatchEnd"
     States = {
       WaitForMatchEnd = {
-        Type      = "Wait"
+        Type          = "Wait"
         TimestampPath = "$.matchTentativeEndTime"
-        Next      = "SettleMatch"
+        Next          = "SettleMatch"
       }
       SettleMatch = {
         Type     = "Task"
@@ -132,11 +132,11 @@ resource "aws_sfn_state_machine" "match_settlement" {
               S = "METADATA"
             }
           }
-          UpdateExpression = "SET #status = :completed, #matchEndedAt = :endTime, #completionReason = :reason"
+          UpdateExpression    = "SET #status = :completed, #matchEndedAt = :endTime, #completionReason = :reason"
           ConditionExpression = "#status = :inProgress"
           ExpressionAttributeNames = {
-            "#status" = "status"
-            "#matchEndedAt" = "matchEndedAt"
+            "#status"           = "status"
+            "#matchEndedAt"     = "matchEndedAt"
             "#completionReason" = "completionReason"
           }
           ExpressionAttributeValues = {
@@ -157,21 +157,21 @@ resource "aws_sfn_state_machine" "match_settlement" {
         End = true
         Retry = [
           {
-            ErrorEquals = ["States.TaskFailed"]
+            ErrorEquals     = ["States.TaskFailed"]
             IntervalSeconds = 2
-            MaxAttempts = 3
-            BackoffRate = 2.0
+            MaxAttempts     = 3
+            BackoffRate     = 2.0
           }
         ]
         Catch = [
           {
             ErrorEquals = ["DynamoDB.ConditionalCheckFailedException"]
-            Next = "MatchAlreadyCompleted"
+            Next        = "MatchAlreadyCompleted"
           }
         ]
       }
       MatchAlreadyCompleted = {
-        Type = "Succeed"
+        Type    = "Succeed"
         Comment = "Match was already completed by forfeiture or another process"
       }
     }

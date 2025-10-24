@@ -4,7 +4,7 @@
 data "archive_file" "lambda_placeholder" {
   type        = "zip"
   output_path = "${path.module}/lambda-placeholder.zip"
-  
+
   source {
     content  = "exports.handler = async () => ({ statusCode: 200, body: 'Placeholder Lambda - Deploy actual code' });"
     filename = "index.js"
@@ -25,7 +25,7 @@ resource "aws_cloudwatch_log_group" "match_processor_logs" {
 resource "aws_lambda_function" "match_processor" {
   function_name = "${var.project_name}-match-processor-${var.environment}"
   role          = aws_iam_role.lambda_sqs_role.arn
-  handler       = "dist/index.handler"  
+  handler       = "dist/index.handler"
   runtime       = var.lambda_runtime
   timeout       = var.lambda_timeout
   memory_size   = var.lambda_memory_size
@@ -63,7 +63,7 @@ resource "aws_lambda_event_source_mapping" "sqs_trigger" {
 
   # Optional: Configure failure handling
   maximum_batching_window_in_seconds = 5
-  
+
   tags = {
     Name = "${var.project_name}-sqs-trigger-${var.environment}"
   }

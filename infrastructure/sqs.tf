@@ -2,7 +2,7 @@
 resource "aws_sqs_queue" "match_processing_dlq" {
   name                      = "${var.project_name}-match-processing-dlq-${var.environment}"
   message_retention_seconds = var.sqs_dlq_message_retention_seconds
-  
+
   tags = {
     Name = "${var.project_name}-match-processing-dlq-${var.environment}"
     Type = "DeadLetterQueue"

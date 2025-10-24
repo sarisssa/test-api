@@ -5,17 +5,17 @@ resource "aws_dynamodb_table" "main" {
   billing_mode   = var.dynamodb_billing_mode
   read_capacity  = var.dynamodb_billing_mode == "PROVISIONED" ? var.dynamodb_read_capacity : null
   write_capacity = var.dynamodb_billing_mode == "PROVISIONED" ? var.dynamodb_write_capacity : null
-  hash_key       = "pk"    # Partition Key
-  range_key      = "sk"    # Sort Key
+  hash_key       = "pk" # Partition Key
+  range_key      = "sk" # Sort Key
 
   # Primary key attributes
   attribute {
-    name = "pk"    # Partition Key (e.g., USER#123, MATCH#456, ASSET#AAPL)
+    name = "pk" # Partition Key (e.g., USER#123, MATCH#456, ASSET#AAPL)
     type = "S"
   }
 
   attribute {
-    name = "sk"    # Sort Key (e.g., PROFILE, METADATA, PRICE#2024-01-01)
+    name = "sk" # Sort Key (e.g., PROFILE, METADATA, PRICE#2024-01-01)
     type = "S"
   }
 
@@ -64,7 +64,7 @@ resource "aws_dynamodb_table" "main" {
 
   # GSI2: Type-based queries (e.g., all items of a certain type/status)
   global_secondary_index {
-    name            = "gsi2-index" 
+    name            = "gsi2-index"
     hash_key        = "gsi2_pk"
     range_key       = "gsi2_sk"
     projection_type = "ALL"

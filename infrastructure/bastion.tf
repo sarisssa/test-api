@@ -163,5 +163,5 @@ output "bastion_private_ip" {
 
 output "redis_connection_command" {
   description = "Command to connect to Redis through the bastion host"
-  value = var.enable_bastion ? "aws ssm start-session --target ${aws_instance.bastion[0].id} --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters '{\"host\":[\"${aws_elasticache_replication_group.redis.primary_endpoint_address}\"],\"portNumber\":[\"6379\"],\"localPortNumber\":[\"6379\"]}' --region ${var.aws_region}" : null
+  value       = var.enable_bastion ? "aws ssm start-session --target ${aws_instance.bastion[0].id} --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters '{\"host\":[\"${aws_elasticache_replication_group.redis.primary_endpoint_address}\"],\"portNumber\":[\"6379\"],\"localPortNumber\":[\"6379\"]}' --region ${var.aws_region}" : null
 }

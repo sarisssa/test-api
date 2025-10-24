@@ -2,7 +2,7 @@
 data "archive_file" "settlement_lambda_placeholder" {
   type        = "zip"
   output_path = "${path.module}/settlement-lambda-placeholder.zip"
-  
+
   source {
     content  = "exports.handler = async (event) => { console.log('DynamoDB Stream event:', JSON.stringify(event, null, 2)); const records = event.Records || []; for (const record of records) { if (record.eventName === 'MODIFY' && record.dynamodb?.NewImage?.status?.S === 'completed') { console.log('Processing match settlement for:', record.dynamodb.NewImage); const completionReason = record.dynamodb.NewImage.completionReason?.S; console.log('Completion reason:', completionReason); if (completionReason === 'time_expired') { console.log('Processing time-expired match settlement'); } else if (completionReason === 'forfeited') { console.log('Processing forfeited match settlement'); } } } return { statusCode: 200, body: JSON.stringify({ message: 'Settlement processing completed', recordsProcessed: records.length }) }; };"
     filename = "index.js"
@@ -99,7 +99,7 @@ resource "aws_cloudwatch_log_group" "settlement_handler_logs" {
 resource "aws_lambda_function" "settlement_handler" {
   function_name = "${var.project_name}-settlement-handler-${var.environment}"
   role          = aws_iam_role.lambda_settlement_role.arn
-  handler       = "dist/settlement.handler"  
+  handler       = "dist/settlement.handler"
   runtime       = var.lambda_runtime
   timeout       = var.lambda_timeout
   memory_size   = var.lambda_memory_size
