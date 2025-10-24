@@ -12,7 +12,6 @@ export const envSchema: FastifyEnvOptions['schema'] = {
     'TWILIO_ACCOUNT_SID',
     'TWILIO_AUTH_TOKEN',
     'TWILIO_VERIFY_SERVICE_SID',
-    'WAGE_TABLE_NAME',
     'REDIS_TLS_REJECT_UNAUTHORIZED',
   ],
   properties: {
@@ -68,13 +67,10 @@ export const envSchema: FastifyEnvOptions['schema'] = {
       type: 'string',
       default: '',
     },
+    //Only used for local development
     STEP_FUNCTIONS_ENDPOINT: {
       type: 'string',
       default: '',
-    },
-    WAGE_TABLE_NAME: {
-      type: 'string',
-      minLength: 1,
     },
     REDIS_TLS_REJECT_UNAUTHORIZED: {
       type: 'string',
@@ -125,7 +121,6 @@ export type Env = {
   HOST: string;
   NODE_ENV: 'development' | 'production' | 'test';
   PORT: number;
-  WAGE_TABLE_NAME: string;
   REDIS_TLS_REJECT_UNAUTHORIZED: string;
   STEP_FUNCTIONS_ENDPOINT?: string;
   USE_TWILIO_STUB?: string;

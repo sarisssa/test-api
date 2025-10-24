@@ -21,10 +21,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
   );
   const { redis, log: logger } = fastify;
 
-  const resolveMatchTableName = () =>
-    fastify.config.WAGE_TABLE_NAME ||
-    fastify.config.DYNAMODB_TABLE_NAME ||
-    'WageTable';
+  const resolveMatchTableName = () => fastify.config.DYNAMODB_TABLE_NAME;
 
   const persistNewMatch = async (players: string[]): Promise<MatchResult> => {
     const matchId = uuidv4();

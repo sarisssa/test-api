@@ -45,14 +45,6 @@ async function buildApp(): Promise<FastifyInstance> {
 
   initializePhoneHashSalt(fastify.config.PHONE_HASH_SALT);
 
-  if (
-    fastify.config.DYNAMODB_TABLE_NAME &&
-    (!fastify.config.WAGE_TABLE_NAME ||
-      fastify.config.WAGE_TABLE_NAME === 'WageTable')
-  ) {
-    fastify.config.WAGE_TABLE_NAME = fastify.config.DYNAMODB_TABLE_NAME;
-  }
-
   await fastify.register(cors);
   await fastify.register(swaggerPlugin);
   await fastify.register(jwt, {

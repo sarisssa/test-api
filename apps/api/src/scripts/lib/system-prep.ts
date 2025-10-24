@@ -29,8 +29,7 @@ import {
 } from './asset-lists.js';
 
 export const AWS_REGION = process.env.AWS_REGION ?? 'us-east-1';
-export const DYNAMODB_TABLE =
-  process.env.WAGE_TABLE_NAME ?? process.env.DYNAMODB_TABLE_NAME ?? 'WageTable';
+export const DYNAMODB_TABLE = process.env.DYNAMODB_TABLE_NAME ?? 'WageTable';
 export const DYNAMODB_ENDPOINT =
   process.env.DYNAMODB_URL ?? 'http://localhost:4566';
 export const STEP_FUNCTIONS_ARN =

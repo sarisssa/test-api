@@ -25,9 +25,7 @@ import { broadcastToMatch } from './connection-manager.js';
 const MATCH_DURATION_MS = 30 * 1000; // TODO: externalise to configuration
 
 const resolveMatchTableName = (fastify: FastifyInstance) =>
-  fastify.config.WAGE_TABLE_NAME ||
-  fastify.config.DYNAMODB_TABLE_NAME ||
-  'WageTable'
+  fastify.config.DYNAMODB_TABLE_NAME;
 
 const startSettlementExecution = async (
   fastify: FastifyInstance,
@@ -39,38 +37,49 @@ const startSettlementExecution = async (
     !fastify.stepFunctions ||
     !fastify.stepFunctionsCommands?.StartExecutionCommand
   ) {
-    fastify.log.debug({ matchId }, 'Settlement workflow not configured; skipping Step Functions execution')
-    return undefined
+    fastify.log.debug(
+      { matchId },
+      'Settlement workflow not configured; skipping Step Functions execution'
+    );
+    return undefined;
   }
 
   try {
-    const tableName = resolveMatchTableName(fastify)
-    const startCommand = new fastify.stepFunctionsCommands.StartExecutionCommand({
-      stateMachineArn: fastify.config.MATCH_SETTLEMENT_STATE_MACHINE_ARN,
-      name: `match-${matchId}-${Date.now()}`,
-      input: JSON.stringify({
-        matchId,
-        matchPk: `MATCH#${matchId}`,
-        matchSk: 'DETAILS',
-        matchTentativeEndTime: matchTentativeEndTimeIso,
-        tableName,
-      }),
-    })
+    const tableName = resolveMatchTableName(fastify);
+    const startCommand =
+      new fastify.stepFunctionsCommands.StartExecutionCommand({
+        stateMachineArn: fastify.config.MATCH_SETTLEMENT_STATE_MACHINE_ARN,
+        name: `match-${matchId}-${Date.now()}`,
+        input: JSON.stringify({
+          matchId,
+          matchPk: `MATCH#${matchId}`,
+          matchSk: 'DETAILS',
+          matchTentativeEndTime: matchTentativeEndTimeIso,
+          tableName,
+        }),
+      });
 
-    const startResponse = await fastify.stepFunctions.send(startCommand)
-    if (startResponse && typeof startResponse === 'object' && 'executionArn' in startResponse) {
-      return (startResponse as { executionArn?: string }).executionArn
+    const startResponse = await fastify.stepFunctions.send(startCommand);
+    if (
+      startResponse &&
+      typeof startResponse === 'object' &&
+      'executionArn' in startResponse
+    ) {
+      return (startResponse as { executionArn?: string }).executionArn;
     }
   } catch (error) {
-    fastify.log.error({
-      error,
-      matchId,
-      stateMachineArn: fastify.config.MATCH_SETTLEMENT_STATE_MACHINE_ARN,
-    }, 'Failed to start settlement workflow execution')
+    fastify.log.error(
+      {
+        error,
+        matchId,
+        stateMachineArn: fastify.config.MATCH_SETTLEMENT_STATE_MACHINE_ARN,
+      },
+      'Failed to start settlement workflow execution'
+    );
   }
 
-  return undefined
-}
+  return undefined;
+};
 
 const stopSettlementExecution = async (
   fastify: FastifyInstance,
@@ -397,7 +406,7 @@ export const handleMatchStart = async (
       fastify,
       matchId,
       matchTentativeEndTimeIso
-    )
+    );
 
     // Update player assets with initial prices and shares
     await initializeMatchAssetPricing(
@@ -508,32 +517,38 @@ export const handlePlayerForfeit = async (
   // Local development (NODE_ENV=development) remains unrestricted for easier testing
   try {
     if (fastify.config.NODE_ENV !== 'development') {
-      const startedAt = match.matchStartedAt ? new Date(match.matchStartedAt).getTime() : undefined
+      const startedAt = match.matchStartedAt
+        ? new Date(match.matchStartedAt).getTime()
+        : undefined;
       const tentativeEnd = match.matchTentativeEndTime
         ? new Date(match.matchTentativeEndTime).getTime()
-        : undefined
+        : undefined;
       if (startedAt && tentativeEnd && tentativeEnd > startedAt) {
-        const totalMs = tentativeEnd - startedAt
-        const gracePercentRaw = process.env.FORFEIT_GRACE_PERCENT ?? '0.1'
-        const gracePercent = Math.max(0, Math.min(1, Number(gracePercentRaw))) || 0.1
-        const minElapsedMs = totalMs * gracePercent
-        const elapsedMs = Date.now() - startedAt
+        const totalMs = tentativeEnd - startedAt;
+        const gracePercentRaw = process.env.FORFEIT_GRACE_PERCENT ?? '0.1';
+        const gracePercent =
+          Math.max(0, Math.min(1, Number(gracePercentRaw))) || 0.1;
+        const minElapsedMs = totalMs * gracePercent;
+        const elapsedMs = Date.now() - startedAt;
         if (elapsedMs < minElapsedMs) {
-          const minSeconds = Math.ceil(minElapsedMs / 1000)
+          const minSeconds = Math.ceil(minElapsedMs / 1000);
           throw new ValidationError(
             `Forfeit not allowed yet. You can forfeit after ${minSeconds}s (grace ${Math.round(
               gracePercent * 100
             )}% of match time).`
-          )
+          );
         }
       }
     }
   } catch (err) {
     // Re-throw validation errors to caller; log unexpected errors and continue to avoid blocking forfeit
     if (err instanceof ValidationError) {
-      throw err
+      throw err;
     }
-    fastify.log.warn({ err, matchId }, 'Failed to evaluate forfeit grace period; proceeding without restriction')
+    fastify.log.warn(
+      { err, matchId },
+      'Failed to evaluate forfeit grace period; proceeding without restriction'
+    );
   }
 
   if (match.matchSettlementExecutionArn) {
@@ -545,8 +560,7 @@ export const handlePlayerForfeit = async (
   }
 
   const winnerId =
-    match.players.find(playerId => playerId !== userId) ??
-    userId;
+    match.players.find(playerId => playerId !== userId) ?? userId;
 
   const matchEndedAtIso = new Date().toISOString();
 
@@ -617,8 +631,8 @@ export const handleMatchEnd = async (
     typeof gameData === 'object' &&
     gameData !== null &&
     'finalScores' in gameData &&
-    typeof (gameData as { finalScores?: Record<string, number> }).finalScores ===
-      'object'
+    typeof (gameData as { finalScores?: Record<string, number> })
+      .finalScores === 'object'
       ? (gameData as { finalScores?: Record<string, number> }).finalScores
       : undefined;
 

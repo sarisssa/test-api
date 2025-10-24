@@ -424,10 +424,6 @@ resource "aws_ecs_task_definition" "backend_task" {
           value = "redis://${aws_elasticache_replication_group.redis.primary_endpoint_address}:${aws_elasticache_replication_group.redis.port}"
         },
         {
-          name  = "DYNAMODB_REGION"
-          value = var.aws_region
-        },
-        {
           name  = "AWS_REGION"
           value = var.aws_region
         },
@@ -435,9 +431,14 @@ resource "aws_ecs_task_definition" "backend_task" {
         {
           name  = "DYNAMODB_TABLE_NAME"
           value = "wage-main-dev"
-          }, {
+        },
+        {
           name  = "S3_BUCKET_NAME"
           value = "wage-profile-images-dev"
+        },
+        {
+          name  = "REDIS_TLS_REJECT_UNAUTHORIZED"
+          value = "false"
         },
       ]
       healthCheck = {

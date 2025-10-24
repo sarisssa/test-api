@@ -9,8 +9,7 @@ import { DynamoDBPerkItem } from '../models/perk.js';
 
 config();
 
-const TABLE_NAME =
-  process.env.WAGE_TABLE_NAME ?? process.env.DYNAMODB_TABLE_NAME ?? 'WageTable';
+const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME ?? 'WageTable';
 
 const region = process.env.AWS_REGION ?? 'us-east-1';
 const endpoint =

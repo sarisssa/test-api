@@ -19,8 +19,7 @@ const dynamodb = DynamoDBDocumentClient.from(
   })
 );
 
-const tableName =
-  process.env.WAGE_TABLE_NAME ?? process.env.DYNAMODB_TABLE_NAME ?? 'WageTable';
+const tableName = process.env.DYNAMODB_TABLE_NAME ?? 'WageTable';
 
 const run = async () => {
   const response = await dynamodb.send(
