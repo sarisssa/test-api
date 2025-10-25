@@ -70,7 +70,7 @@ async function getRedisClient(): Promise<RedisClient> {
  * Fetch match from DynamoDB
  */
 async function fetchMatch(matchId: string): Promise<MatchItem> {
-  const tableName = process.env.WAGE_TABLE_NAME ?? 'WageTable';
+  const tableName = process.env.DYNAMODB_TABLE_NAME ?? 'WageTable';
 
   const result = await dynamodb.send(
     new GetItemCommand({
@@ -93,7 +93,7 @@ async function fetchMatch(matchId: string): Promise<MatchItem> {
  * Mark match as broadcast (idempotency marker)
  */
 async function markMatchBroadcasted(matchId: string): Promise<void> {
-  const tableName = process.env.WAGE_TABLE_NAME ?? 'WageTable';
+  const tableName = process.env.DYNAMODB_TABLE_NAME ?? 'WageTable';
   const now = new Date().toISOString();
 
   await dynamodb.send(
