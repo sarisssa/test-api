@@ -129,7 +129,6 @@ jobs:
           wait-for-minutes: 15
           force-new-deployment: true
 
-      # --- Match Processor Deployment ---
       - name: Build and push Match Processor Docker image to ECR
         uses: docker/build-push-action@v5
         with:
@@ -165,3 +164,59 @@ jobs:
           wait-for-service-stability: true
           wait-for-minutes: 10
           force-new-deployment: true
+
+      - name: Build Compute Outcome Lambda
+        run: |
+          mkdir -p lambda-build
+          
+          npx esbuild apps/api/src/step-functions/handlers/compute-outcome.ts \
+            --bundle \
+            --platform=node \
+            --target=node20 \
+            --format=esm \
+            --outfile=lambda-build/compute-outcome.mjs \
+            --external:@aws-sdk/*
+          
+          cd lambda-build
+          zip -q compute-outcome.zip compute-outcome.mjs
+          echo "✅ compute-outcome.zip created ($(du -h compute-outcome.zip | cut -f1))"
+
+      - name: Build Broadcast Completion Lambda
+        run: |
+          # Install ioredis temporarily for bundling
+          npm install ioredis --no-save
+          
+          npx esbuild apps/api/src/step-functions/handlers/broadcast-completion.ts \
+            --bundle \
+            --platform=node \
+            --target=node20 \
+            --format=esm \
+            --outfile=lambda-build/broadcast-completion.mjs \
+            --external:@aws-sdk/*
+          
+          cd lambda-build
+          zip -q broadcast-completion.zip broadcast-completion.mjs
+          echo "✅ broadcast-completion.zip created ($(du -h broadcast-completion.zip | cut -f1))"
+
+      - name: Deploy Lambda Functions
+        run: |
+          echo "🚀 Deploying Compute Outcome Lambda..."
+          aws lambda update-function-code \
+            --function-name wage-compute-outcome-${{ env.ENV_NAME }} \
+            --zip-file fileb://lambda-build/compute-outcome.zip
+          
+          aws lambda wait function-updated \
+            --function-name wage-compute-outcome-${{ env.ENV_NAME }}
+          
+          echo "✅ Compute Outcome Lambda deployed"
+          
+          echo "🚀 Deploying Broadcast Completion Lambda..."
+          aws lambda update-function-code \
+            --function-name wage-broadcast-completion-${{ env.ENV_NAME }} \
+            --zip-file fileb://lambda-build/broadcast-completion.zip
+          
+          aws lambda wait function-updated \
+            --function-name wage-broadcast-completion-${{ env.ENV_NAME }}
+          
+          echo "✅ Broadcast Completion Lambda deployed"
+          echo "🎉 All Lambda functions deployed successfully!"
