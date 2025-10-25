@@ -550,8 +550,8 @@ resource "aws_ecs_task_definition" "match_processor_task" {
           value = var.aws_region
         },
         {
-          name  = "WAGE_TABLE_NAME"
-          value = aws_dynamodb_table.main.name
+          name  = "DYNAMODB_TABLE_NAME"
+          value = "wage-main-dev"
         },
         {
           name  = "MATCH_PROCESSOR_INTERVAL_SECONDS"

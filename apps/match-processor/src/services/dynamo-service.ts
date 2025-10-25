@@ -2,7 +2,7 @@ import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb'
 import { Match } from '../types.js'
 import { ddb } from './aws-clients.js'
 
-const WAGE_TABLE_NAME = process.env.WAGE_TABLE_NAME || 'WageTable'
+const DYNAMODB_TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || 'WageTable'
 
 export interface AssetPriceRecord {
   currentPrice?: number
@@ -23,7 +23,7 @@ export interface PriceRunMetrics {
 export const getActiveMatches = async (): Promise<Match[]> => {
   console.log('Attempting DynamoDB scan for active matches...')
   const scanParams = {
-    TableName: WAGE_TABLE_NAME,
+    TableName: DYNAMODB_TABLE_NAME,
     FilterExpression: '#status = :status',
     ExpressionAttributeNames: {
       '#status': 'status'
@@ -45,7 +45,7 @@ export const getActiveMatches = async (): Promise<Match[]> => {
       (error as { name: string }).name === 'ResourceNotFoundException'
     ) {
       console.warn(
-        `DynamoDB table "${WAGE_TABLE_NAME}" not found. Returning no matches. ` +
+        `DynamoDB table "${DYNAMODB_TABLE_NAME}" not found. Returning no matches. ` +
           'Run the local table creation script before starting the match processor.'
       )
       return []
@@ -63,7 +63,7 @@ export const updateAssetPrice = async (
 ): Promise<void> => {
   try {
     const updateParams = {
-      TableName: WAGE_TABLE_NAME,
+      TableName: DYNAMODB_TABLE_NAME,
       Key: {
         pk: `ASSET#${symbol}`,
         sk: 'METADATA'
@@ -100,7 +100,7 @@ export const batchUpdateAssetPrices = async (
   const updatePromises = priceUpdates.map(async ({ assetType, symbol, currentPrice }) => {
     try {
       const updateParams = {
-        TableName: WAGE_TABLE_NAME,
+        TableName: DYNAMODB_TABLE_NAME,
         Key: {
           pk: `ASSET#${symbol}`,
           sk: 'METADATA'
@@ -146,7 +146,7 @@ export const getAssetPriceRecords = async (
   for (const { assetType, symbol } of assets) {
     try {
       const getParams = {
-        TableName: WAGE_TABLE_NAME,
+        TableName: DYNAMODB_TABLE_NAME,
         Key: {
           pk: `ASSET#${symbol}`,
           sk: 'METADATA'
@@ -174,7 +174,7 @@ export const getAssetPriceRecords = async (
 
 export const recordPriceRunMetrics = async (metrics: PriceRunMetrics): Promise<void> => {
   const params = {
-    TableName: WAGE_TABLE_NAME,
+    TableName: DYNAMODB_TABLE_NAME,
     Item: {
       pk: 'PRICE_STATUS',
       sk: 'SUMMARY',
@@ -206,7 +206,7 @@ export const updateMatchPlayerAssetPrices = async (
   try {
     await ddb.send(
       new UpdateCommand({
-        TableName: WAGE_TABLE_NAME,
+        TableName: DYNAMODB_TABLE_NAME,
         Key: {
           pk: `MATCH#${matchId}`,
           sk: 'DETAILS'
