@@ -9,6 +9,11 @@ RUN npm ci
 
 COPY . .
 
+# Build wage-shared package first (dependency)
+WORKDIR /app/packages/wage-shared
+RUN npm run build
+
+# Build match-processor
 WORKDIR /app/apps/match-processor
 RUN npm run build
 
@@ -24,7 +29,9 @@ COPY apps/match-processor/package.json ./apps/match-processor/
 COPY packages/wage-shared/package.json ./packages/wage-shared/
 RUN npm ci --only=production --omit=dev
 
+# Copy built artifacts from builder
 COPY --from=builder /app/apps/match-processor/dist ./apps/match-processor/dist
+COPY --from=builder /app/packages/wage-shared/dist ./packages/wage-shared/dist
 WORKDIR /app/apps/match-processor
 
 EXPOSE 3001
