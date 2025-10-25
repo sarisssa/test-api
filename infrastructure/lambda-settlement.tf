@@ -202,7 +202,6 @@ resource "aws_lambda_function" "compute_outcome" {
   environment {
     variables = {
       DYNAMODB_TABLE_NAME = "wage-main-dev"
-      AWS_REGION          = var.aws_region
       NODE_ENV            = var.environment
     }
   }
@@ -246,7 +245,6 @@ resource "aws_lambda_function" "broadcast_completion" {
   environment {
     variables = {
       DYNAMODB_TABLE_NAME = "wage-main-dev"
-      AWS_REGION          = var.aws_region
       NODE_ENV            = var.environment
       REDIS_URL           = "redis://${aws_elasticache_replication_group.redis.primary_endpoint_address}:${aws_elasticache_replication_group.redis.port}"
     }
