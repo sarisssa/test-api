@@ -99,40 +99,9 @@ resource "aws_dynamodb_table" "main" {
 }
 
 
-
 output "dynamodb_table_stream_arn" {
   description = "ARN of the main DynamoDB table stream"
   value       = aws_dynamodb_table.main.stream_arn
 }
 
-# Lambda event source mapping for DynamoDB Stream
-resource "aws_lambda_event_source_mapping" "dynamodb_stream_settlement" {
-  event_source_arn  = aws_dynamodb_table.main.stream_arn
-  function_name     = aws_lambda_function.settlement_handler.arn
-  starting_position = "LATEST"
-  batch_size        = 10
-  enabled           = true
 
-  # Filter to only process MODIFY events where status becomes 'completed'
-  filter_criteria {
-    filter {
-      pattern = jsonencode({
-        eventName = ["MODIFY"]
-        dynamodb = {
-          NewImage = {
-            status = {
-              S = ["completed"]
-            }
-          }
-        }
-      })
-    }
-  }
-
-  maximum_batching_window_in_seconds = 5
-  parallelization_factor             = 1
-
-  tags = {
-    Name = "${var.project_name}-settlement-stream-mapping-${var.environment}"
-  }
-}

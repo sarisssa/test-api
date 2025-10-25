@@ -21,6 +21,14 @@ resource "aws_security_group" "elasticache" {
     description = "Redis port access from VPC"
   }
 
+  ingress {
+    from_port       = 6379
+    to_port         = 6379
+    protocol        = "tcp"
+    security_groups = [aws_security_group.lambda.id]
+    description     = "Redis access from Lambda functions"
+  }
+
   egress {
     from_port   = 0
     to_port     = 0

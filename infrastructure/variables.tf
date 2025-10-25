@@ -433,12 +433,6 @@ variable "websocket_lambda_deployment_package" {
   default     = ""
 }
 
-variable "settlement_lambda_deployment_package" {
-  description = "Path to the Settlement Lambda deployment package (zip file). If empty, uses placeholder."
-  type        = string
-  default     = ""
-}
-
 variable "enable_bastion" {
   description = "Whether to create a bastion host for development access to private resources"
   type        = bool
