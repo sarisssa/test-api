@@ -1,4 +1,4 @@
-name: Fastify Backend CI/CD
+name: Backend & Match Processor CI/CD
 
 on:
   workflow_dispatch:
@@ -11,9 +11,10 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: wage-backend-ecr
-  WORKING_DIRECTORY: apps/api
-  ECS_CONTAINER_NAME: wage-backend-api
+  API_ECR_REPOSITORY: wage-backend-ecr
+  PROCESSOR_ECR_REPOSITORY: wage-match-processor-ecr
+  API_CONTAINER_NAME: wage-backend-api
+  PROCESSOR_CONTAINER_NAME: wage-match-processor
   ENV_NAME: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && 'prd') || 'dev' }}
 
 permissions:
@@ -27,10 +28,6 @@ jobs:
     permissions:
       id-token: write
       contents: read
-
-    defaults:
-      run:
-        working-directory: ${{ env.WORKING_DIRECTORY }}
 
     steps:
       - name: Configure AWS credentials
@@ -79,16 +76,16 @@ jobs:
           echo "timestamp=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
           echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-      - name: Build and push Docker image to ECR
+      - name: Build and push API Docker image to ECR
         uses: docker/build-push-action@v5
         with:
           push: true
           context: .
-          file: ${{ env.WORKING_DIRECTORY }}/Dockerfile
+          file: apps/api/Dockerfile
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.run_id }}
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tags.outputs.timestamp }}-${{ steps.tags.outputs.sha_short }}
-            ${{ env.ENV_NAME == 'prd' && format('{0}/{1}:{2}', steps.login-ecr.outputs.registry, env.ECR_REPOSITORY, 'latest') || '' }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.API_ECR_REPOSITORY }}:${{ github.run_id }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.API_ECR_REPOSITORY }}:${{ steps.tags.outputs.timestamp }}-${{ steps.tags.outputs.sha_short }}
+            ${{ env.ENV_NAME == 'prd' && format('{0}/{1}:{2}', steps.login-ecr.outputs.registry, env.API_ECR_REPOSITORY, 'latest') || '' }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -106,28 +103,65 @@ jobs:
           terraform init -backend-config="environments/${{ env.ENV_NAME }}.hcl"
           terraform apply -var-file=environments/${{ env.ENV_NAME }}.tfvars -auto-approve
 
-      - name: Download Task Definition
+      - name: Download API Task Definition
         run: |
           aws ecs describe-task-definition \
             --task-definition wage-backend-task-family-${{ env.ENV_NAME }} \
-            --query taskDefinition > ./task-definition.json
+            --query taskDefinition > ./api-task-definition.json
 
-      - name: Fill in the new image ID in the Amazon ECS task definition
-        id: task-def
+      - name: Fill in the new image ID in API task definition
+        id: api-task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: ${{ env.WORKING_DIRECTORY }}/task-definition.json
-          container-name: ${{ env.ECS_CONTAINER_NAME }}
-          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tags.outputs.timestamp }}-${{ steps.tags.outputs.sha_short }}
+          task-definition: ./api-task-definition.json
+          container-name: ${{ env.API_CONTAINER_NAME }}
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.API_ECR_REPOSITORY }}:${{ steps.tags.outputs.timestamp }}-${{ steps.tags.outputs.sha_short }}
 
       #TODO: Ensure that if task health check fails, DO NOT DEPLOY
-      - name: Deploy to Amazon ECS
-        id: deploy
+      - name: Deploy API to Amazon ECS
+        id: api-deploy
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
-          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          task-definition: ${{ steps.api-task-def.outputs.task-definition }}
           service: wage-backend-service-${{ env.ENV_NAME }}
           cluster: wage-backend-cluster-${{ env.ENV_NAME }}
           wait-for-service-stability: true
           wait-for-minutes: 15
+          force-new-deployment: true
+
+      # --- Match Processor Deployment ---
+      - name: Build and push Match Processor Docker image to ECR
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          context: .
+          file: apps/match-processor/Dockerfile
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.PROCESSOR_ECR_REPOSITORY }}:${{ github.run_id }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.PROCESSOR_ECR_REPOSITORY }}:${{ steps.tags.outputs.timestamp }}-${{ steps.tags.outputs.sha_short }}
+            ${{ env.ENV_NAME == 'prd' && format('{0}/{1}:{2}', steps.login-ecr.outputs.registry, env.PROCESSOR_ECR_REPOSITORY, 'latest') || '' }}
+
+      - name: Download Match Processor Task Definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition wage-match-processor-task-family-${{ env.ENV_NAME }} \
+            --query taskDefinition > ./match-processor-task-definition.json
+
+      - name: Fill in the new image ID in Match Processor task definition
+        id: processor-task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ./match-processor-task-definition.json
+          container-name: ${{ env.PROCESSOR_CONTAINER_NAME }}
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.PROCESSOR_ECR_REPOSITORY }}:${{ steps.tags.outputs.timestamp }}-${{ steps.tags.outputs.sha_short }}
+
+      - name: Deploy Match Processor to Amazon ECS
+        id: processor-deploy
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.processor-task-def.outputs.task-definition }}
+          service: wage-match-processor-service-${{ env.ENV_NAME }}
+          cluster: wage-backend-cluster-${{ env.ENV_NAME }}
+          wait-for-service-stability: true
+          wait-for-minutes: 10
           force-new-deployment: true
