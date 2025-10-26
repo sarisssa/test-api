@@ -54,6 +54,9 @@ interface MatchItem {
   players: string[];
   playerAssets: Record<string, PlayerAssetSelection>;
   status: string;
+  completionReason?: 'time_expired' | 'forfeited' | 'manual';
+  winner?: string;
+  loser?: string;
 }
 
 const INITIAL_PORTFOLIO_VALUE = 100_000;
@@ -230,6 +233,31 @@ export const handler = async (
       `Fetched match ${matchId} with ${match.players.length} players`
     );
 
+    // Check if match was already completed via forfeit/manual with winner set
+    if (
+      match.completionReason &&
+      match.completionReason !== 'time_expired' &&
+      match.winner &&
+      match.loser
+    ) {
+      console.log(
+        `Match already completed via ${match.completionReason} with winner=${match.winner}`
+      );
+
+      // Still compute scores for reporting, but don't override winner
+      const finalScores = await computeFinalScores(tableName, match);
+      const returns = computeReturns(finalScores);
+      const matchEndedAtIso = new Date().toISOString();
+
+      return {
+        winnerId: match.winner, // Use existing winner
+        loserId: match.loser, // Use existing loser
+        finalScores,
+        returns,
+        matchEndedAtIso,
+      };
+    }
+
     // 2. Compute final portfolio values
     const finalScores = await computeFinalScores(tableName, match);
     console.log('Final scores:', finalScores);
@@ -238,7 +266,7 @@ export const handler = async (
     const returns = computeReturns(finalScores);
     console.log('Returns:', returns);
 
-    // 4. Determine winner
+    // 4. Determine winner by scores (for time_expired matches)
     const { winnerId, loserId } = determineWinner(returns, match.players);
     console.log(`Winner: ${winnerId}, Loser: ${loserId}`);
 
