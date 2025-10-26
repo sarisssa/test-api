@@ -143,6 +143,24 @@ resource "aws_iam_role_policy" "ecs_task_cloudwatch_metrics_policy" {
   })
 }
 
+resource "aws_iam_role_policy" "ecs_task_step_functions_policy" {
+  name = "${var.project_name}-ecs-task-step-functions-policy-${var.environment}"
+  role = aws_iam_role.ecs_task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "states:StartExecution"
+        ],
+        Resource = aws_sfn_state_machine.match_settlement.arn
+      }
+    ]
+  })
+}
+
 # resource "aws_iam_role_policy" "ecs_task_secrets_policy" {
 #   name = "${var.project_name}-ecs-task-secrets-policy-${var.environment}"
 #   role = aws_iam_role.ecs_task_role.id
@@ -439,6 +457,10 @@ resource "aws_ecs_task_definition" "backend_task" {
         {
           name  = "REDIS_TLS_REJECT_UNAUTHORIZED"
           value = "false"
+        },
+        {
+          name  = "MATCH_SETTLEMENT_STATE_MACHINE_ARN"
+          value = aws_sfn_state_machine.match_settlement.arn
         },
       ]
       healthCheck = {

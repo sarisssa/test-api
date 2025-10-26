@@ -92,6 +92,16 @@ resource "aws_iam_policy" "step_functions_policy" {
           aws_dynamodb_table.main.arn,
           "${aws_dynamodb_table.main.arn}/index/*"
         ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "lambda:InvokeFunction"
+        ]
+        Resource = [
+          aws_lambda_function.compute_outcome.arn,
+          aws_lambda_function.broadcast_completion.arn
+        ]
       }
     ]
   })
@@ -111,50 +121,66 @@ resource "aws_sfn_state_machine" "match_settlement" {
   role_arn = aws_iam_role.step_functions_role.arn
 
   definition = jsonencode({
-    Comment = "Match Settlement Workflow - Waits until match end time and settles match"
+    Comment = "Match Settlement - Compute outcome, update match, and broadcast results"
     StartAt = "WaitForMatchEnd"
     States = {
       WaitForMatchEnd = {
         Type          = "Wait"
         TimestampPath = "$.matchTentativeEndTime"
-        Next          = "SettleMatch"
+        Next          = "ComputeOutcome"
       }
-      SettleMatch = {
+
+      ComputeOutcome = {
         Type     = "Task"
-        Resource = "arn:aws:states:::dynamodb:updateItem"
+        Resource = "arn:aws:states:::lambda:invoke"
         Parameters = {
-          TableName = aws_dynamodb_table.main.name
-          Key = {
-            pk = {
-              "S.$" = "$.matchId"
-            }
-            sk = {
-              S = "METADATA"
-            }
-          }
-          UpdateExpression    = "SET #status = :completed, #matchEndedAt = :endTime, #completionReason = :reason"
-          ConditionExpression = "#status = :inProgress"
-          ExpressionAttributeNames = {
-            "#status"           = "status"
-            "#matchEndedAt"     = "matchEndedAt"
-            "#completionReason" = "completionReason"
-          }
-          ExpressionAttributeValues = {
-            ":completed" = {
-              S = "completed"
-            }
-            ":endTime" = {
-              "S.$" = "$.matchTentativeEndTime"
-            }
-            ":reason" = {
-              S = "time_expired"
-            }
-            ":inProgress" = {
-              S = "in_progress"
-            }
+          FunctionName = aws_lambda_function.compute_outcome.arn
+          Payload = {
+            "matchId.$"   = "$.matchId"
+            "tableName.$" = "$.tableName"
+            "matchPk.$"   = "$.matchPk"
+            "matchSk.$"   = "$.matchSk"
           }
         }
-        End = true
+        ResultPath = "$.compute"
+        Next       = "CompleteMatchWithOutcome"
+        Retry = [
+          {
+            ErrorEquals     = ["States.TaskFailed"]
+            IntervalSeconds = 2
+            MaxAttempts     = 2
+            BackoffRate     = 2.0
+          }
+        ]
+      }
+
+      CompleteMatchWithOutcome = {
+        Type     = "Task"
+        Resource = "arn:aws:states:::aws-sdk:dynamodb:updateItem"
+        Parameters = {
+          "TableName.$" = "$.tableName"
+          Key = {
+            pk = { "S.$" = "$.matchPk" }
+            sk = { "S.$" = "$.matchSk" }
+          }
+          UpdateExpression    = "SET #status = :completed, matchEndedAt = :endTime, completionReason = :reason, winner = :winner, loser = :loser, finalScoresJson = :finalScoresJson, returnsJson = :returnsJson"
+          ConditionExpression = "#status = :inProgress"
+          ExpressionAttributeNames = {
+            "#status" = "status"
+          }
+          ExpressionAttributeValues = {
+            ":completed"       = { S = "completed" }
+            ":inProgress"      = { S = "in_progress" }
+            ":reason"          = { S = "time_expired" }
+            ":endTime"         = { "S.$" = "$.matchTentativeEndTime" }
+            ":winner"          = { "S.$" = "$.compute.Payload.winnerId" }
+            ":loser"           = { "S.$" = "$.compute.Payload.loserId" }
+            ":finalScoresJson" = { "S.$" = "States.JsonToString($.compute.Payload.finalScores)" }
+            ":returnsJson"     = { "S.$" = "States.JsonToString($.compute.Payload.returns)" }
+          }
+        }
+        ResultPath = null
+        Next       = "BroadcastCompletion"
         Retry = [
           {
             ErrorEquals     = ["States.TaskFailed"]
@@ -166,13 +192,39 @@ resource "aws_sfn_state_machine" "match_settlement" {
         Catch = [
           {
             ErrorEquals = ["DynamoDB.ConditionalCheckFailedException"]
+            ResultPath  = null
             Next        = "MatchAlreadyCompleted"
           }
         ]
       }
+
+      BroadcastCompletion = {
+        Type     = "Task"
+        Resource = "arn:aws:states:::lambda:invoke"
+        Parameters = {
+          FunctionName = aws_lambda_function.broadcast_completion.arn
+          Payload = {
+            "matchId.$"  = "$.matchId"
+            "winnerId.$" = "$.compute.Payload.winnerId"
+            "loserId.$"  = "$.compute.Payload.loserId"
+            "returns.$"  = "$.compute.Payload.returns"
+          }
+        }
+        ResultPath = null
+        End        = true
+        Retry = [
+          {
+            ErrorEquals     = ["States.TaskFailed"]
+            IntervalSeconds = 2
+            MaxAttempts     = 3
+            BackoffRate     = 2.0
+          }
+        ]
+      }
+
       MatchAlreadyCompleted = {
         Type    = "Succeed"
-        Comment = "Match was already completed by forfeiture or another process"
+        Comment = "Match was already completed by forfeit or other process"
       }
     }
   })
@@ -192,4 +244,9 @@ resource "aws_sfn_state_machine" "match_settlement" {
   tags = {
     Name = "${var.project_name}-match-settlement-${var.environment}"
   }
+}
+
+output "step_functions_arn" {
+  description = "ARN of the Match Settlement Step Functions state machine"
+  value       = aws_sfn_state_machine.match_settlement.arn
 }
