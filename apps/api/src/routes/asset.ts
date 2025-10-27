@@ -1,16 +1,15 @@
 import { FastifyInstance } from 'fastify';
 import {
-  MONITORED_SYMBOLS_SET,
+  MONITORED_SYMBOLS_HOT_ZSET,
   TWELVE_DATA_API_BASE_URL,
 } from '../constants.js';
 import { findAssets, getAssetByTicker } from '../services/asset.js';
 import {
   AssetSearchQuery,
   assetSearchQueryJsonSchema,
+  assetsResponseJsonSchema,
   GetAssetParams,
   getAssetParamsJsonSchema,
-  GetAssetQuery,
-  getAssetQueryJsonSchema,
 } from '../types/asset.js';
 import { AssetType } from '../types/match.js';
 
@@ -21,14 +20,12 @@ export default async function assetRoutes(fastify: FastifyInstance) {
     '/',
     {
       schema: {
+        security: [{ bearerAuth: [] }],
         tags: ['assets'],
         description: 'Search for assets',
         querystring: assetSearchQueryJsonSchema,
         response: {
-          200: {
-            description: 'List of assets matching search criteria',
-            type: 'array',
-          },
+          200: assetsResponseJsonSchema,
           500: {
             description: 'Internal server error',
             $ref: 'ErrorResponse#',
@@ -55,7 +52,11 @@ export default async function assetRoutes(fastify: FastifyInstance) {
           limit: parsedLimit,
           msg: 'Error in GET /assets endpoint',
         });
-        reply.status(500).send({ error: (error as Error).message });
+        return reply.status(500).send({
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: (error as Error).message,
+        });
       }
     }
   );
@@ -66,6 +67,7 @@ export default async function assetRoutes(fastify: FastifyInstance) {
     '/:symbol/price',
     {
       schema: {
+        security: [{ bearerAuth: [] }],
         tags: ['assets'],
         description: 'Get current price for an asset',
         params: getAssetParamsJsonSchema,
@@ -100,10 +102,12 @@ export default async function assetRoutes(fastify: FastifyInstance) {
       const upperSymbol = symbol.toUpperCase();
 
       try {
-        const isMonitored = await fastify.redis.sismember(
-          MONITORED_SYMBOLS_SET,
+        // Check if symbol is in hot symbols ZSET (returns timestamp or null)
+        const score = await fastify.redis.zscore(
+          MONITORED_SYMBOLS_HOT_ZSET,
           upperSymbol
         );
+        const isMonitored = score !== null;
 
         if (isMonitored) {
           fastify.log.info({
@@ -117,6 +121,13 @@ export default async function assetRoutes(fastify: FastifyInstance) {
             );
 
           if (asset && asset.currentPrice && asset.currentPrice > 0) {
+            // Update timestamp to keep symbol hot
+            await fastify.redis.zadd(
+              MONITORED_SYMBOLS_HOT_ZSET,
+              Date.now(),
+              upperSymbol
+            );
+
             return {
               symbol: upperSymbol,
               price: asset.currentPrice,
@@ -150,8 +161,9 @@ export default async function assetRoutes(fastify: FastifyInstance) {
             msg: 'Failed to fetch price from Twelve Data',
           });
           return reply.status(502).send({
-            error: 'Failed to fetch price data',
-            symbol: upperSymbol,
+            statusCode: 502,
+            error: 'Bad Gateway',
+            message: `Failed to fetch price data for symbol '${upperSymbol}'.`,
           });
         }
 
@@ -167,15 +179,20 @@ export default async function assetRoutes(fastify: FastifyInstance) {
             msg: 'No price data returned from Twelve Data',
           });
           return reply.status(404).send({
-            error: 'Price data not available',
-            symbol: upperSymbol,
+            statusCode: 404,
+            error: 'Not Found',
+            message: `Price data not available for symbol '${upperSymbol}'.`,
           });
         }
 
         const currentPrice = parseFloat(priceData.price);
         const lastUpdated = new Date().toISOString();
 
-        await fastify.redis.sadd(MONITORED_SYMBOLS_SET, upperSymbol);
+        await fastify.redis.zadd(
+          MONITORED_SYMBOLS_HOT_ZSET,
+          Date.now(),
+          upperSymbol
+        );
 
         try {
           const asset =
@@ -221,8 +238,9 @@ export default async function assetRoutes(fastify: FastifyInstance) {
           msg: 'Error in price endpoint',
         });
         return reply.status(500).send({
-          error: 'Internal server error',
-          symbol: upperSymbol,
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: (error as Error).message,
         });
       }
     }
@@ -230,15 +248,14 @@ export default async function assetRoutes(fastify: FastifyInstance) {
 
   fastify.get<{
     Params: GetAssetParams;
-    Querystring: GetAssetQuery;
   }>(
     '/:symbol',
     {
       schema: {
+        security: [{ bearerAuth: [] }],
         tags: ['assets'],
-        description: 'Get detailed information about an asset',
+        description: 'Get detailed information about an asset by ticker symbol',
         params: getAssetParamsJsonSchema,
-        querystring: getAssetQueryJsonSchema,
         response: {
           200: {
             description: 'Asset information',
@@ -266,7 +283,11 @@ export default async function assetRoutes(fastify: FastifyInstance) {
           return asset;
         } else {
           fastify.log.info(`Asset not found: ${symbol}`);
-          reply.status(404).send({ error: 'Asset not found.' });
+          return reply.status(404).send({
+            statusCode: 404,
+            error: 'Not Found',
+            message: `Asset with symbol '${symbol}' not found.`,
+          });
         }
       } catch (error) {
         fastify.log.error({
@@ -274,7 +295,11 @@ export default async function assetRoutes(fastify: FastifyInstance) {
           symbol,
           msg: 'Error in GET /assets/:symbol endpoint',
         });
-        reply.status(500).send({ error: (error as Error).message });
+        return reply.status(500).send({
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: (error as Error).message,
+        });
       }
     }
   );

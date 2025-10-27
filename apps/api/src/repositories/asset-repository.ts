@@ -13,14 +13,24 @@ export const createAssetRepository = (fastify: FastifyInstance) => {
     limit: number = 20
   ): Promise<DynamoDBAssetItem[]> => {
     // Build filter expression: search in name/Symbol, and filter by EntityType=Asset to reduce scan size
+    // Since DynamoDB contains() is case-sensitive, we search with multiple case variations
+    const upperSearchTerm = searchTerm.toUpperCase();
+    const lowerSearchTerm = searchTerm.toLowerCase();
+    const titleCaseSearchTerm =
+      searchTerm.charAt(0).toUpperCase() + searchTerm.slice(1).toLowerCase();
+
     let filterExpression =
-      'EntityType = :entityType AND (contains(#sym, :s) OR contains(#n, :s))';
+      'EntityType = :entityType AND (contains(#sym, :symSearch) OR contains(#n, :nameSearchOriginal) OR contains(#n, :nameSearchUpper) OR contains(#n, :nameSearchLower) OR contains(#n, :nameSearchTitle))';
     const expressionAttributeNames: Record<string, string> = {
       '#n': 'name',
       '#sym': 'Symbol',
     };
     const expressionAttributeValues: Record<string, any> = {
-      ':s': searchTerm,
+      ':symSearch': upperSearchTerm,
+      ':nameSearchOriginal': searchTerm,
+      ':nameSearchUpper': upperSearchTerm,
+      ':nameSearchLower': lowerSearchTerm,
+      ':nameSearchTitle': titleCaseSearchTerm,
       ':entityType': 'Asset',
     };
 
