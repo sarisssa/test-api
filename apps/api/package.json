@@ -45,6 +45,7 @@
     "setup:system": "tsx src/scripts/setup-system.ts",
     "create-in-progress-match": "tsx src/scripts/create-in-progress-match.ts",
     "create-partial-ready-match": "tsx src/scripts/create-partial-ready-match.ts",
+    "create-completed-match": "tsx src/scripts/create-completed-match.ts",
     "create-test-players": "tsx src/scripts/create-test-players.ts",
     "setup:step-functions": "tsx src/scripts/setup-step-function.ts",
     "deploy:lambdas": "tsx src/step-functions/deploy.ts",

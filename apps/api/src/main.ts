@@ -18,6 +18,7 @@ import assetRoutes from './routes/asset.js';
 import authRoutes from './routes/auth.js';
 import healthRoutes from './routes/health.js';
 import matchGatewayRoutes from './routes/match-gateway.js';
+import matchRoutes from './routes/match.js';
 import metricsRoutes from './routes/metrics.js';
 import perkRoutes from './routes/perks.js';
 import userRoutes from './routes/user.js';
@@ -87,6 +88,7 @@ async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(metricsRoutes);
   await fastify.register(assetRoutes, { prefix: '/assets' });
   await fastify.register(authRoutes, { prefix: '/auth' });
+  await fastify.register(matchRoutes, { prefix: '/matches' });
   await fastify.register(perkRoutes, { prefix: '/perks' });
   await fastify.register(userRoutes, { prefix: '/user' });
 

@@ -19,7 +19,6 @@ import {
   validateMatchAccess,
   validatePlayers,
 } from '../validators/match-validator.js';
-import { validateTickerSymbol } from './asset.js';
 import { broadcastToMatch } from './connection-manager.js';
 
 const MATCH_DURATION_MS = 30 * 1000; // TODO: externalise to configuration
@@ -187,8 +186,9 @@ export const handleAssetSelection = async (
     const matchData = await fastify.repositories.match.getMatch(matchId);
     const { match } = validateMatchAccess(matchData, userId);
 
-    const { exists, assetType } = await validateTickerSymbol(fastify, ticker);
-    if (!exists || !assetType) {
+    const assetDetails =
+      await fastify.repositories.asset.fetchAssetByTickerFromDB(ticker);
+    if (!assetDetails) {
       throw new Error(`Invalid ticker: ${ticker}`);
     }
 
@@ -196,8 +196,9 @@ export const handleAssetSelection = async (
 
     const newAsset: PlayerAsset = {
       ticker,
+      name: assetDetails.name,
       selectedAt: new Date().toISOString(),
-      assetType,
+      assetType: assetDetails.AssetType as PlayerAsset['assetType'],
       initialPrice: 0, // Will be set when match starts
       shares: 0, // Will be set when match starts
     };
