@@ -5,10 +5,11 @@ on:
   push:
     branches:
       - main
+      - dev
   pull_request:
     branches:
       - main
-
+      - dev
 env:
   AWS_REGION: us-east-1
   API_ECR_REPOSITORY: wage-backend-ecr
