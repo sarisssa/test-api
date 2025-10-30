@@ -1,5 +1,7 @@
 import { PlayerAssetSelections } from '../types/match.js';
 
+//We have both Tentaive End Time and End Time since we may support user ability to surrender the match before the tentative end time.
+
 export interface DynamoDBMatchItem {
   pk: `MATCH#${string}`;
   sk: 'DETAILS';
@@ -35,12 +37,17 @@ export interface DynamoDBPlayerMatchItem {
   pk: `USER#${string}`;
   sk: `MATCH#${string}`;
   EntityType: 'PlayerMatch';
-
-  matchId: string;
-  opponent: string;
+  id: string;
+  opponentId: string;
+  opponentUsername: string;
   result: 'win' | 'loss' | 'pending';
-
-  duration?: number;
-  score?: number;
+  wagerAmount: number;
+  duration: number;
+  category: 'stock' | 'crypto' | 'commodities';
   createdAt: string;
+  startedAt?: string;
+  tentativeEndTime: string;
+  endedAt?: string;
+  performancePercentage?: number;
+  opponentPerformancePercentage?: number;
 }

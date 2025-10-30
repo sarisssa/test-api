@@ -14,6 +14,8 @@ import { PlayerAsset } from '../types/match.js';
 import { MatchResult } from '../types/matchmaking.js';
 
 const ASSET_SELECTION_DURATION = 2 * 60 * 1000;
+//TODO: Remove hard codeed match duration
+const MATCH_DURATION_MINUTES = 60;
 
 export const createMatchRepository = (fastify: FastifyInstance) => {
   const dynamodb = DynamoDBDocumentClient.from(
@@ -27,8 +29,12 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     const matchId = uuidv4();
     const nowMs = Date.now();
     const nowIso = new Date(nowMs).toISOString();
+    const assetSelectionEndedAtMs = nowMs + ASSET_SELECTION_DURATION;
     const assetSelectionEndedAtIso = new Date(
-      nowMs + ASSET_SELECTION_DURATION
+      assetSelectionEndedAtMs
+    ).toISOString();
+    const initialMatchTentativeEndTimeIso = new Date(
+      assetSelectionEndedAtMs + MATCH_DURATION_MINUTES * 60 * 1000
     ).toISOString();
 
     const match: MatchResult = {
@@ -38,6 +44,15 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     };
 
     try {
+      const [player1Info, player2Info] = await Promise.all([
+        fastify.repositories.user.getUserById(players[0]),
+        fastify.repositories.user.getUserById(players[1]),
+      ]);
+
+      if (!player1Info || !player2Info) {
+        throw new Error('One or both players not found');
+      }
+
       const cacheUpdatePromise = redis.hset(REDIS_KEYS.MATCH(matchId), {
         players: JSON.stringify(players),
         createdAt: match.createdAt,
@@ -51,7 +66,7 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
         return acc;
       }, {});
 
-      const dbWritePromise = dynamodb.send(
+      const matchItemPromise = dynamodb.send(
         new PutCommand({
           TableName: resolveMatchTableName(),
           Item: {
@@ -69,10 +84,56 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
         })
       );
 
-      await Promise.all([cacheUpdatePromise, dbWritePromise]);
+      const player1MatchItemPromise = dynamodb.send(
+        new PutCommand({
+          TableName: resolveMatchTableName(),
+          Item: {
+            pk: `USER#${players[0]}`,
+            sk: `MATCH#${matchId}`,
+            EntityType: 'PlayerMatch',
+            id: matchId,
+            opponentId: players[1],
+            opponentUsername: player2Info.username,
+            result: 'pending',
+            wagerAmount: 20,
+            duration: MATCH_DURATION_MINUTES,
+            category: 'stock',
+            createdAt: nowIso,
+            tentativeEndTime: initialMatchTentativeEndTimeIso,
+          },
+        })
+      );
+
+      const player2MatchItemPromise = dynamodb.send(
+        new PutCommand({
+          TableName: resolveMatchTableName(),
+          Item: {
+            pk: `USER#${players[1]}`,
+            sk: `MATCH#${matchId}`,
+            EntityType: 'PlayerMatch',
+            id: matchId,
+            opponentId: players[0],
+            opponentUsername: player1Info.username,
+            result: 'pending',
+            wagerAmount: 20,
+            duration: MATCH_DURATION_MINUTES,
+            category: 'stock',
+            createdAt: nowIso,
+            tentativeEndTime: initialMatchTentativeEndTimeIso,
+          },
+        })
+      );
+
+      await Promise.all([
+        cacheUpdatePromise,
+        matchItemPromise,
+        player1MatchItemPromise,
+        player2MatchItemPromise,
+      ]);
+
       logger.info({
         matchId,
-        msg: 'Match created successfully in both Redis and DynamoDB',
+        msg: 'Match and PlayerMatchItems created successfully in both Redis and DynamoDB',
       });
 
       return match;
@@ -298,6 +359,12 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     try {
       const tableName = resolveMatchTableName();
 
+      // Get match to retrieve players
+      const match = await getMatch(matchId);
+      if (!match) {
+        throw new Error(`Match ${matchId} not found`);
+      }
+
       const updateExpressions = [
         '#status = :newStatus',
         'matchStartedAt = :now',
@@ -321,18 +388,47 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
           params.settlementExecutionArn;
       }
 
-      await dynamodb.send(
-        new UpdateCommand({
-          TableName: tableName,
-          Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' },
-          UpdateExpression: `SET ${updateExpressions.join(', ')}`,
-          ConditionExpression:
-            'attribute_exists(pk) AND attribute_exists(sk) AND #status = :expectedStatus',
-          ExpressionAttributeNames: expressionAttributeNames,
-          ExpressionAttributeValues: expressionAttributeValues,
-        })
+      const updatePromises = [];
+
+      // Update main Match item
+      updatePromises.push(
+        dynamodb.send(
+          new UpdateCommand({
+            TableName: tableName,
+            Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' },
+            UpdateExpression: `SET ${updateExpressions.join(', ')}`,
+            ConditionExpression:
+              'attribute_exists(pk) AND attribute_exists(sk) AND #status = :expectedStatus',
+            ExpressionAttributeNames: expressionAttributeNames,
+            ExpressionAttributeValues: expressionAttributeValues,
+          })
+        )
       );
 
+      // Update PlayerMatchItem records for both players
+      for (const playerId of match.players) {
+        updatePromises.push(
+          dynamodb.send(
+            new UpdateCommand({
+              TableName: tableName,
+              Key: {
+                pk: `USER#${playerId}`,
+                sk: `MATCH#${matchId}`,
+              },
+              UpdateExpression:
+                'SET startedAt = :startedAt, tentativeEndTime = :tentativeEndTime',
+              ConditionExpression:
+                'attribute_exists(pk) AND attribute_exists(sk)',
+              ExpressionAttributeValues: {
+                ':startedAt': params.matchStartTimeIso,
+                ':tentativeEndTime': params.matchTentativeEndTimeIso,
+              },
+            })
+          )
+        );
+      }
+
+      await Promise.all(updatePromises);
       await redis.del(REDIS_KEYS.MATCH(matchId));
     } catch (error) {
       if (
@@ -389,6 +485,14 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
       settlementExecutionArn?: string;
     }
   ): Promise<void> => {
+    const tableName = resolveMatchTableName();
+
+    // Get match to retrieve players
+    const match = await getMatch(matchId);
+    if (!match) {
+      throw new Error(`Match ${matchId} not found`);
+    }
+
     const expressions = ['matchTentativeEndTime = :tentativeEndTime'];
 
     const expressionAttributeValues: Record<string, unknown> = {
@@ -401,16 +505,43 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
         params.settlementExecutionArn;
     }
 
-    await dynamodb.send(
-      new UpdateCommand({
-        TableName: resolveMatchTableName(),
-        Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' },
-        UpdateExpression: `SET ${expressions.join(', ')}`,
-        ConditionExpression: 'attribute_exists(pk) AND attribute_exists(sk)',
-        ExpressionAttributeValues: expressionAttributeValues,
-      })
+    const updatePromises = [];
+
+    // Update main Match item
+    updatePromises.push(
+      dynamodb.send(
+        new UpdateCommand({
+          TableName: tableName,
+          Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' },
+          UpdateExpression: `SET ${expressions.join(', ')}`,
+          ConditionExpression: 'attribute_exists(pk) AND attribute_exists(sk)',
+          ExpressionAttributeValues: expressionAttributeValues,
+        })
+      )
     );
 
+    // Update PlayerMatchItem records for both players
+    for (const playerId of match.players) {
+      updatePromises.push(
+        dynamodb.send(
+          new UpdateCommand({
+            TableName: tableName,
+            Key: {
+              pk: `USER#${playerId}`,
+              sk: `MATCH#${matchId}`,
+            },
+            UpdateExpression: 'SET tentativeEndTime = :tentativeEndTime',
+            ConditionExpression:
+              'attribute_exists(pk) AND attribute_exists(sk)',
+            ExpressionAttributeValues: {
+              ':tentativeEndTime': params.matchTentativeEndTimeIso,
+            },
+          })
+        )
+      );
+    }
+
+    await Promise.all(updatePromises);
     await redis.del(REDIS_KEYS.MATCH(matchId));
   };
 
@@ -505,6 +636,11 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
   ): Promise<DynamoDBMatchItem | undefined> => {
     const tableName = resolveMatchTableName();
 
+    const existingMatch = await getMatch(matchId);
+    if (!existingMatch) {
+      throw new Error(`Match ${matchId} not found`);
+    }
+
     const setExpressions = [
       '#status = :completed',
       'matchEndedAt = :matchEndedAt',
@@ -544,23 +680,94 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     const removeExpressions = ['matchSettlementExecutionArn'];
 
     try {
-      await dynamodb.send(
-        new UpdateCommand({
-          TableName: tableName,
-          Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' },
-          UpdateExpression: `SET ${setExpressions.join(', ')}${
-            removeExpressions.length > 0
-              ? ` REMOVE ${removeExpressions.join(', ')}`
-              : ''
-          }`,
-          ConditionExpression:
-            'attribute_exists(pk) AND attribute_exists(sk) AND #status = :expectedStatus',
-          ExpressionAttributeNames: expressionAttributeNames,
-          ExpressionAttributeValues: expressionAttributeValues,
-        })
+      const updatePromises = [];
+
+      // Update the main match item
+      updatePromises.push(
+        dynamodb.send(
+          new UpdateCommand({
+            TableName: tableName,
+            Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' },
+            UpdateExpression: `SET ${setExpressions.join(', ')}${
+              removeExpressions.length > 0
+                ? ` REMOVE ${removeExpressions.join(', ')}`
+                : ''
+            }`,
+            ConditionExpression:
+              'attribute_exists(pk) AND attribute_exists(sk) AND #status = :expectedStatus',
+            ExpressionAttributeNames: expressionAttributeNames,
+            ExpressionAttributeValues: expressionAttributeValues,
+          })
+        )
       );
 
+      // Update PlayerMatchItem records for both players
+      for (const playerId of existingMatch.players) {
+        const playerUpdateExpressions = [
+          '#result = :result',
+          'endedAt = :endedAt',
+        ];
+
+        const playerExpressionAttributeNames: Record<string, string> = {
+          '#result': 'result',
+        };
+
+        const playerExpressionAttributeValues: Record<string, unknown> = {
+          ':result':
+            playerId === params.winnerId
+              ? 'win'
+              : playerId === params.loserId
+                ? 'loss'
+                : 'pending',
+          ':endedAt': params.matchEndedAtIso,
+        };
+
+        // Add performance percentage if available
+        if (params.finalScores && params.finalScores[playerId] !== undefined) {
+          playerUpdateExpressions.push('performancePercentage = :performance');
+          playerExpressionAttributeValues[':performance'] =
+            params.finalScores[playerId];
+        }
+
+        // Add opponent's performance percentage if available
+        const opponentId = existingMatch.players.find(p => p !== playerId);
+        if (
+          opponentId &&
+          params.finalScores &&
+          params.finalScores[opponentId] !== undefined
+        ) {
+          playerUpdateExpressions.push(
+            'opponentPerformancePercentage = :opponentPerformance'
+          );
+          playerExpressionAttributeValues[':opponentPerformance'] =
+            params.finalScores[opponentId];
+        }
+
+        updatePromises.push(
+          dynamodb.send(
+            new UpdateCommand({
+              TableName: tableName,
+              Key: {
+                pk: `USER#${playerId}`,
+                sk: `MATCH#${matchId}`,
+              },
+              UpdateExpression: `SET ${playerUpdateExpressions.join(', ')}`,
+              ConditionExpression:
+                'attribute_exists(pk) AND attribute_exists(sk)',
+              ExpressionAttributeNames: playerExpressionAttributeNames,
+              ExpressionAttributeValues: playerExpressionAttributeValues,
+            })
+          )
+        );
+      }
+
+      await Promise.all(updatePromises);
       await redis.del(REDIS_KEYS.MATCH(matchId));
+
+      logger.info({
+        matchId,
+        msg: 'Match and PlayerMatchItems completed successfully',
+      });
 
       return await getMatch(matchId);
     } catch (error) {
