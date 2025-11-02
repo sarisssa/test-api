@@ -7,7 +7,6 @@ import {
   validateChallengeCreation,
 } from '../utils/challenge-utils.js';
 
-import { createMatch } from '../services/match.js';
 import { getUserPerks } from '../services/perk.js';
 import {
   generateUsernameSuggestions,
@@ -1078,42 +1077,42 @@ export default async function userRoutes(fastify: FastifyInstance) {
         };
 
         // If challenge is accepted, create a match immediately
-        if (status === 'accepted') {
-          try {
-            const match = await createMatch(
-              fastify,
-              [challenge.challengerId, challenge.challengedId],
-              {
-                duration: challenge.duration,
-                wagerAmount: challenge.amount,
-                category: challenge.category,
-              }
-            );
+        // if (status === 'accepted') {
+        //   try {
+        //     const match = await createMatch(
+        //       fastify,
+        //       [challenge.challengerId, challenge.challengedId],
+        //       {
+        //         duration: challenge.duration,
+        //         wagerAmount: challenge.amount,
+        //         category: challenge.category,
+        //       }
+        //     );
 
-            fastify.log.info({
-              challengeId,
-              matchId: match.matchId,
-              players: [challenge.challengerId, challenge.challengedId],
-              msg: 'Match created successfully from accepted challenge',
-            });
+        //     fastify.log.info({
+        //       challengeId,
+        //       matchId: match.matchId,
+        //       players: [challenge.challengerId, challenge.challengedId],
+        //       msg: 'Match created successfully from accepted challenge',
+        //     });
 
-            return reply.status(200).send({
-              message: messages[status],
-              matchId: match.matchId,
-            });
-          } catch (matchError) {
-            fastify.log.error({
-              error: matchError,
-              challengeId,
-              msg: 'Failed to create match after accepting challenge',
-            });
-            // Note: Challenge status is already updated to ACCEPTED
-            // We return an error to inform the user that match creation failed
-            return reply.status(500).send({
-              error: 'Challenge accepted but match creation failed',
-            });
-          }
-        }
+        //     return reply.status(200).send({
+        //       message: messages[status],
+        //       matchId: match.matchId,
+        //     });
+        //   } catch (matchError) {
+        //     fastify.log.error({
+        //       error: matchError,
+        //       challengeId,
+        //       msg: 'Failed to create match after accepting challenge',
+        //     });
+        //     // Note: Challenge status is already updated to ACCEPTED
+        //     // We return an error to inform the user that match creation failed
+        //     return reply.status(500).send({
+        //       error: 'Challenge accepted but match creation failed',
+        //     });
+        //   }
+        // }
 
         return reply.status(200).send({
           message: messages[status],
