@@ -7,8 +7,10 @@ import {
   validateChallengeCreation,
 } from '../utils/challenge-utils.js';
 
+import { createMatch } from '../services/match.js';
 import { getUserPerks } from '../services/perk.js';
 import {
+  generateUsernameSuggestions,
   getUserMatchHistory,
   getUserProfile,
   updateUsername,
@@ -36,6 +38,8 @@ import {
   invitesResponseSchema,
   matchesResponseJsonSchema,
   profilePictureResponseSchema,
+  SuggestUsernameResponse,
+  suggestUsernameResponseJsonSchema,
   UpdateUsernameBody,
   updateUsernameJsonSchema,
   updateUsernameResponseJsonSchema,
@@ -101,6 +105,44 @@ export default async function userRoutes(fastify: FastifyInstance) {
           statusCode: 500,
           error: 'Internal Server Error',
           message: 'Internal server error',
+        });
+      }
+    }
+  );
+
+  fastify.get<{ Reply: SuggestUsernameResponse }>(
+    '/suggest-username',
+    {
+      schema: {
+        security: [{ bearerAuth: [] }],
+        tags: ['user'],
+        description:
+          'Generates and returns 2 suggested usernames that are unique and not already taken.',
+        response: {
+          200: suggestUsernameResponseJsonSchema,
+          500: {
+            description: 'Internal server error',
+            $ref: 'ErrorResponse#',
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const suggestions = await generateUsernameSuggestions(fastify, 2);
+
+        const response: SuggestUsernameResponse = {
+          suggestions,
+        };
+
+        return reply.send(response);
+      } catch (error) {
+        fastify.log.error({ error, msg: 'Error generating usernames' });
+
+        return reply.status(500).send({
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Could not generate usernames.',
         });
       }
     }
@@ -940,7 +982,9 @@ export default async function userRoutes(fastify: FastifyInstance) {
             type: 'object',
             properties: {
               message: { type: 'string' },
+              matchId: { type: 'string' },
             },
+            required: ['message'],
           },
           400: {
             description: 'Invalid request',
@@ -1032,6 +1076,44 @@ export default async function userRoutes(fastify: FastifyInstance) {
           rejected: 'Challenge rejected',
           cancelled: 'Challenge cancelled',
         };
+
+        // If challenge is accepted, create a match immediately
+        if (status === 'accepted') {
+          try {
+            const match = await createMatch(
+              fastify,
+              [challenge.challengerId, challenge.challengedId],
+              {
+                duration: challenge.duration,
+                wagerAmount: challenge.amount,
+                category: challenge.category,
+              }
+            );
+
+            fastify.log.info({
+              challengeId,
+              matchId: match.matchId,
+              players: [challenge.challengerId, challenge.challengedId],
+              msg: 'Match created successfully from accepted challenge',
+            });
+
+            return reply.status(200).send({
+              message: messages[status],
+              matchId: match.matchId,
+            });
+          } catch (matchError) {
+            fastify.log.error({
+              error: matchError,
+              challengeId,
+              msg: 'Failed to create match after accepting challenge',
+            });
+            // Note: Challenge status is already updated to ACCEPTED
+            // We return an error to inform the user that match creation failed
+            return reply.status(500).send({
+              error: 'Challenge accepted but match creation failed',
+            });
+          }
+        }
 
         return reply.status(200).send({
           message: messages[status],

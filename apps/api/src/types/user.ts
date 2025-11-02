@@ -22,6 +22,25 @@ export interface UserMatch {
 // User/Profile Schemas
 // ------------------------------------
 
+export interface SuggestUsernameResponse {
+  suggestions: string[];
+}
+
+export const suggestUsernameResponseJsonSchema = {
+  type: 'object',
+  properties: {
+    suggestions: {
+      type: 'array',
+      description: 'An array of two suggested usernames.',
+      items: {
+        type: 'string',
+        example: 'EliteBull_1234',
+      },
+    },
+  },
+  required: ['suggestions'],
+};
+
 export const updateUsernameJsonSchema = {
   type: 'object',
   properties: {

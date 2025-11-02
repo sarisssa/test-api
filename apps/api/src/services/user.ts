@@ -244,3 +244,114 @@ export const uploadProfilePicture = async (
     throw error;
   }
 };
+
+const USERNAME_PART_1 = [
+  'Crypto',
+  'Bronze',
+  'Silver',
+  'Golden',
+  'Elite',
+  'Cautious',
+  'Dazzling',
+  'Thundering',
+  'Avenging',
+];
+
+const USERNAME_PART_2 = [
+  'Bull',
+  'Bear',
+  'Fox',
+  'Lion',
+  'Eagle',
+  'Maverick',
+  'Ruffian',
+  'Whale',
+  'Trader',
+];
+
+const generateUsername = (): string => {
+  const part1 =
+    USERNAME_PART_1[Math.floor(Math.random() * USERNAME_PART_1.length)];
+  const part2 =
+    USERNAME_PART_2[Math.floor(Math.random() * USERNAME_PART_2.length)];
+  const randomDigits = Math.floor(Math.random() * 10000)
+    .toString()
+    .padStart(4, '0');
+
+  return `${part1}${part2}_${randomDigits}`;
+};
+
+const isUsernameAvailable = async (
+  fastify: FastifyInstance,
+  username: string
+): Promise<boolean> => {
+  const existingUser =
+    await fastify.repositories.user.getUserByUsername(username);
+  return !existingUser;
+};
+
+export const generateUsernameSuggestions = async (
+  fastify: FastifyInstance,
+  count: number = 2,
+  maxAttempts: number = 1000
+): Promise<string[]> => {
+  try {
+    const suggestions = new Set<string>();
+    let attempts = 0;
+
+    while (suggestions.size < count) {
+      attempts++;
+
+      if (attempts > maxAttempts) {
+        fastify.log.error({
+          requestedCount: count,
+          generatedCount: suggestions.size,
+          attempts,
+          msg: 'Exceeded maximum attempts to generate unique usernames. This should not happen.',
+        });
+        throw new Error(
+          'Unable to generate unique usernames after maximum attempts'
+        );
+      }
+
+      const username = generateUsername();
+
+      if (suggestions.has(username)) {
+        continue;
+      }
+
+      const isAvailable = await isUsernameAvailable(fastify, username);
+      if (isAvailable) {
+        suggestions.add(username);
+        fastify.log.debug({
+          username,
+          attempts,
+          suggestionsCount: suggestions.size,
+          msg: 'Generated available username',
+        });
+      } else {
+        fastify.log.debug({
+          username,
+          attempts,
+          msg: 'Username already taken in DynamoDB, trying again',
+        });
+      }
+    }
+
+    fastify.log.info({
+      requestedCount: count,
+      generatedCount: suggestions.size,
+      attempts,
+      msg: 'Successfully generated username suggestions',
+    });
+
+    return Array.from(suggestions);
+  } catch (error) {
+    fastify.log.error({
+      count,
+      error,
+      msg: 'Error generating username suggestions',
+    });
+    throw error;
+  }
+};
