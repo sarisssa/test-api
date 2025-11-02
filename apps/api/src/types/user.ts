@@ -71,6 +71,41 @@ export const updateUsernameResponseJsonSchema = {
   required: ['message', 'newUsername'],
 } as const;
 
+export type AvatarId = 'A1' | 'A2' | 'A3' | 'A4' | 'A5' | 'A6' | 'A7' | 'A8';
+
+export interface UpdateAvatarBody {
+  avatarId: AvatarId;
+}
+
+export const updateAvatarJsonSchema = {
+  type: 'object',
+  properties: {
+    avatarId: {
+      type: 'string',
+      enum: ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8'],
+      description: 'Avatar ID to set for the user',
+    },
+  },
+  required: ['avatarId'],
+  additionalProperties: false,
+} as const;
+
+export const updateAvatarResponseJsonSchema = {
+  description: 'Avatar updated successfully',
+  type: 'object',
+  properties: {
+    message: {
+      type: 'string',
+      example: 'Avatar updated successfully',
+    },
+    avatarId: {
+      type: 'string',
+      example: 'A1',
+    },
+  },
+  required: ['message', 'avatarId'],
+} as const;
+
 export const userProfileResponseSchema = {
   type: 'object',
   properties: {
@@ -89,6 +124,7 @@ export const userProfileResponseSchema = {
         inGameCurrency: { type: 'number' },
       },
     },
+    avatarId: { type: 'string', nullable: true },
     profilePictureUrl: { type: 'string', nullable: true },
     perks: {
       type: 'object',

@@ -20,6 +20,7 @@ const toPublicProfile = (user: DynamoDBUserItem): UserPublicProfile => {
       experience: user.stats.experience,
       inGameCurrency: user.stats.inGameCurrency,
     },
+    avatarId: user.avatarId,
     profilePictureUrl: user.profilePictureUrl,
     bio: user.bio,
     perks: user.perks,
@@ -130,6 +131,28 @@ export const updateUsername = async (
       username,
       error,
       msg: 'Error in changeUsername service',
+    });
+    throw error;
+  }
+};
+
+export const updateAvatarId = async (
+  fastify: FastifyInstance,
+  userId: string,
+  avatarId: string
+): Promise<UserPublicProfile> => {
+  try {
+    const updatedUser = await fastify.repositories.user.updateAvatarId(
+      userId,
+      avatarId
+    );
+    return toPublicProfile(updatedUser);
+  } catch (error) {
+    fastify.log.error({
+      userId,
+      avatarId,
+      error,
+      msg: 'Error in updateAvatarId service',
     });
     throw error;
   }

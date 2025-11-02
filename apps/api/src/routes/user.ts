@@ -12,6 +12,7 @@ import {
   generateUsernameSuggestions,
   getUserMatchHistory,
   getUserProfile,
+  updateAvatarId,
   updateUsername,
   uploadProfilePicture,
 } from '../services/user.js';
@@ -39,6 +40,9 @@ import {
   profilePictureResponseSchema,
   SuggestUsernameResponse,
   suggestUsernameResponseJsonSchema,
+  UpdateAvatarBody,
+  updateAvatarJsonSchema,
+  updateAvatarResponseJsonSchema,
   UpdateUsernameBody,
   updateUsernameJsonSchema,
   updateUsernameResponseJsonSchema,
@@ -216,6 +220,61 @@ export default async function userRoutes(fastify: FastifyInstance) {
     }
   );
 
+  fastify.put<{ Body: UpdateAvatarBody }>(
+    '/avatar-id',
+    {
+      schema: {
+        security: [{ bearerAuth: [] }],
+        tags: ['user'],
+        description: 'Update user avatar',
+        body: updateAvatarJsonSchema,
+        response: {
+          200: updateAvatarResponseJsonSchema,
+          404: {
+            description: 'User not found',
+            $ref: 'ErrorResponse#',
+          },
+          500: {
+            description: 'Internal server error',
+            $ref: 'ErrorResponse#',
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { avatarId } = request.body;
+        const updatedUser = await updateAvatarId(
+          fastify,
+          request.user.userId,
+          avatarId
+        );
+
+        return reply.send({
+          message: 'Avatar updated successfully',
+          avatarId: updatedUser.avatarId || avatarId,
+        });
+      } catch (error) {
+        fastify.log.error({ error, msg: 'Error updating avatar' });
+
+        if (error instanceof Error && error.message === 'User not found') {
+          return reply.status(404).send({
+            statusCode: 404,
+            error: 'Not Found',
+            message: 'User not found',
+          });
+        }
+
+        return reply.status(500).send({
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Internal server error',
+        });
+      }
+    }
+  );
+
+  // Profile Picture route will not exist for MVP
   fastify.put<{
     Headers: { authorization: string };
   }>(

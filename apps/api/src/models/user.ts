@@ -18,6 +18,7 @@ export interface DynamoDBUserItem {
     inGameCurrency: number;
     capital: number;
   };
+  avatarId?: string;
   profilePictureUrl?: string;
   bio?: string;
   perks?: {
@@ -40,6 +41,7 @@ export interface UserPublicProfile {
     experience: number;
     inGameCurrency: number;
   };
+  avatarId?: string;
   profilePictureUrl?: string;
   bio?: string;
 

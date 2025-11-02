@@ -430,6 +430,46 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     }
   };
 
+  const updateAvatarId = async (
+    userId: string,
+    avatarId: string
+  ): Promise<DynamoDBUserItem> => {
+    try {
+      const currentUser = await getUserById(userId);
+      if (!currentUser) {
+        throw new Error('User not found');
+      }
+
+      const updatedUser = {
+        ...currentUser,
+        avatarId,
+      };
+
+      await dynamodb.send(
+        new PutCommand({
+          TableName: fastify.config.DYNAMODB_TABLE_NAME,
+          Item: updatedUser,
+        })
+      );
+
+      logger.info({
+        userId,
+        avatarId,
+        msg: 'Avatar updated successfully',
+      });
+
+      return updatedUser;
+    } catch (error) {
+      logger.error({
+        userId,
+        avatarId,
+        error,
+        msg: 'Error updating avatar',
+      });
+      throw error;
+    }
+  };
+
   const updateUserPerksAndCurrency = async (
     userId: string,
     perks: { [perkId: string]: { purchasedAt: string; quantity: number } },
@@ -512,6 +552,7 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     persistNewUser,
     updateUserLastLoginTimestamp,
     updateUsername,
+    updateAvatarId,
     getUserMatches,
     updateProfilePicture,
     updateUserPerksAndCurrency,
