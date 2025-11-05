@@ -174,12 +174,12 @@ jobs:
             --bundle \
             --platform=node \
             --target=node20 \
-            --format=esm \
-            --outfile=lambda-build/compute-outcome.mjs \
+            --format=cjs \
+            --outfile=lambda-build/compute-outcome.js \
             --external:@aws-sdk/*
           
           cd lambda-build
-          zip -q compute-outcome.zip compute-outcome.mjs
+          zip -q compute-outcome.zip compute-outcome.js
           echo "✅ compute-outcome.zip created ($(du -h compute-outcome.zip | cut -f1))"
 
       - name: Build Broadcast Completion Lambda
@@ -191,12 +191,12 @@ jobs:
             --bundle \
             --platform=node \
             --target=node20 \
-            --format=esm \
-            --outfile=lambda-build/broadcast-completion.mjs \
+            --format=cjs \
+            --outfile=lambda-build/broadcast-completion.js \
             --external:@aws-sdk/*
           
           cd lambda-build
-          zip -q broadcast-completion.zip broadcast-completion.mjs
+          zip -q broadcast-completion.zip broadcast-completion.js
           echo "✅ broadcast-completion.zip created ($(du -h broadcast-completion.zip | cut -f1))"
 
       - name: Deploy Lambda Functions
