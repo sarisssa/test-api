@@ -3,6 +3,10 @@ import { createChallenge, getUserChallenges } from '../services/challenge.js';
 import { getUserFriends, getUserRequests } from '../services/friend.js';
 import { generateInviteLink, getUserInvites } from '../services/invite.js';
 import {
+  getUserNotifications,
+  markNotificationAsRead,
+} from '../services/notification.js';
+import {
   isChallengeExpired,
   validateChallengeCreation,
 } from '../utils/challenge-utils.js';
@@ -31,6 +35,12 @@ import {
   updateFriendRequestParamsJsonSchema,
 } from '../types/friend.js';
 import { createInviteResponseJsonSchema } from '../types/invite.js';
+import {
+  MarkNotificationReadParams,
+  markNotificationReadParamsJsonSchema,
+  markNotificationReadResponseJsonSchema,
+  notificationsResponseJsonSchema,
+} from '../types/notification.js';
 import { userPerksResponseJsonSchema } from '../types/perk.js';
 import {
   friendRequestsResponseJsonSchema,
@@ -727,6 +737,25 @@ export default async function userRoutes(fastify: FastifyInstance) {
           receiverId,
           msg: 'Error in POST /requests endpoint',
         });
+
+        if (
+          error instanceof Error &&
+          error.message === 'Users are already friends'
+        ) {
+          return reply.status(409).send({
+            error: 'Users are already friends',
+          });
+        }
+
+        if (
+          error instanceof Error &&
+          error.message === 'Friend request already exists between these users'
+        ) {
+          return reply.status(409).send({
+            error: 'Friend request already exists',
+          });
+        }
+
         return reply.status(500).send({
           error: 'Failed to send friend request',
         });
@@ -808,6 +837,13 @@ export default async function userRoutes(fastify: FastifyInstance) {
         if (status === 'accepted') {
           await fastify.repositories.friend.createFriendship(
             friendRequest.senderId,
+            friendRequest.receiverId
+          );
+
+          // Create notification for the sender (A) that B accepted their request
+          await fastify.repositories.notification.createNotification(
+            friendRequest.senderId,
+            'friend_request_accepted',
             friendRequest.receiverId
           );
         }
@@ -1186,6 +1222,157 @@ export default async function userRoutes(fastify: FastifyInstance) {
         });
         return reply.status(500).send({
           error: 'Failed to process challenge',
+        });
+      }
+    }
+  );
+
+  fastify.get(
+    '/notifications',
+    {
+      schema: {
+        security: [{ bearerAuth: [] }],
+        tags: ['user'],
+        description:
+          'Get all notifications for the user (friend requests and challenges)',
+        response: {
+          200: notificationsResponseJsonSchema,
+          500: {
+            description: 'Internal server error',
+            $ref: 'ErrorResponse#',
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const notifications = await getUserNotifications(
+          fastify,
+          request.user.userId
+        );
+
+        return reply.send(notifications);
+      } catch (error) {
+        fastify.log.error({
+          error,
+          userId: request.user.userId,
+          msg: 'Error in GET /user/notifications endpoint',
+        });
+        return reply.status(500).send({
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Failed to fetch notifications',
+        });
+      }
+    }
+  );
+
+  fastify.patch<{
+    Params: MarkNotificationReadParams;
+  }>(
+    '/notifications/:notificationType/:notificationId/read',
+    {
+      schema: {
+        security: [{ bearerAuth: [] }],
+        tags: ['user'],
+        description: 'Mark a notification as read',
+        params: markNotificationReadParamsJsonSchema,
+        response: {
+          200: markNotificationReadResponseJsonSchema,
+          400: {
+            description: 'Bad request',
+            $ref: 'ErrorResponse#',
+          },
+          403: {
+            description: 'Forbidden',
+            $ref: 'ErrorResponse#',
+          },
+          404: {
+            description: 'Notification not found',
+            $ref: 'ErrorResponse#',
+          },
+          500: {
+            description: 'Internal server error',
+            $ref: 'ErrorResponse#',
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { notificationId, notificationType } = request.params;
+
+        // Validate notification type
+        if (
+          notificationType !== 'friend_request' &&
+          notificationType !== 'challenge' &&
+          notificationType !== 'notification'
+        ) {
+          return reply.status(400).send({
+            statusCode: 400,
+            error: 'Bad Request',
+            message:
+              'Invalid notification type. Must be "friend_request", "challenge", or "notification"',
+          });
+        }
+
+        const result = await markNotificationAsRead(
+          fastify,
+          request.user.userId,
+          notificationId,
+          notificationType
+        );
+
+        return reply.send({
+          message: 'Notification marked as read',
+          notificationId,
+          readAt: result.readAt,
+        });
+      } catch (error) {
+        fastify.log.error({
+          error,
+          userId: request.user.userId,
+          params: request.params,
+          msg: 'Error in PATCH /user/notifications/:notificationType/:notificationId/read endpoint',
+        });
+
+        if (
+          error instanceof Error &&
+          error.message === 'Friend request not found'
+        ) {
+          return reply.status(404).send({
+            statusCode: 404,
+            error: 'Not Found',
+            message: 'Notification not found',
+          });
+        }
+
+        if (error instanceof Error && error.message === 'Challenge not found') {
+          return reply.status(404).send({
+            statusCode: 404,
+            error: 'Not Found',
+            message: 'Notification not found',
+          });
+        }
+
+        if (
+          error instanceof Error &&
+          (error.message ===
+            'User is not authorized to mark this request as read' ||
+            error.message ===
+              'User is not authorized to mark this challenge as read')
+        ) {
+          return reply.status(403).send({
+            statusCode: 403,
+            error: 'Forbidden',
+            message: 'Not authorized to mark this notification as read',
+          });
+        }
+
+        return reply.status(500).send({
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Failed to mark notification as read',
         });
       }
     }

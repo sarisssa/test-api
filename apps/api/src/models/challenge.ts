@@ -14,6 +14,7 @@ export interface DynamoDBChallengeItem {
   createdAt: string;
   updatedAt: string;
   expiresAt?: string; // ISO timestamp, null for crypto challenges
+  readAt?: string;
 }
 
 export interface ChallengeResponse {

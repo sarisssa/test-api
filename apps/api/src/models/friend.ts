@@ -19,6 +19,7 @@ export interface DynamoDBFriendRequestItem {
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
   requestedAt: string;
   updatedAt: string;
+  readAt?: string;
 }
 
 export interface FriendResponse {

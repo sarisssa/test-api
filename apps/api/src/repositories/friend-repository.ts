@@ -48,6 +48,14 @@ export const createFriendRepository = (fastify: FastifyInstance) => {
     senderId: string,
     receiverId: string
   ): Promise<DynamoDBFriendRequestItem> => {
+    const existingFriendships = await getUserFriends(senderId);
+    const isAlreadyFriend = existingFriendships.some(
+      f => f.friendId === receiverId
+    );
+    if (isAlreadyFriend) {
+      throw new Error('Users are already friends');
+    }
+
     // Check for existing requests
     const hasExisting = await checkExistingRequest(senderId, receiverId);
     if (hasExisting) {
@@ -379,6 +387,64 @@ export const createFriendRepository = (fastify: FastifyInstance) => {
     }
   };
 
+  const markFriendRequestAsRead = async (
+    userId: string,
+    requestId: string
+  ): Promise<void> => {
+    const request = await getFriendRequest(requestId);
+    if (!request) {
+      throw new Error('Friend request not found');
+    }
+
+    if (request.receiverId !== userId) {
+      throw new Error('User is not authorized to mark this request as read');
+    }
+
+    const now = new Date().toISOString();
+
+    try {
+      // Update both items (sender and receiver copies) to maintain consistency
+      await Promise.all([
+        dynamodb.send(
+          new PutCommand({
+            TableName: fastify.config.DYNAMODB_TABLE_NAME,
+            Item: {
+              ...request,
+              pk: `USER#${request.senderId}`,
+              sk: `REQUEST#${requestId}`,
+              gsi1_pk: `SENDER#${request.senderId}`,
+              gsi1_sk: `REQUEST#${requestId}`,
+              readAt: now,
+              updatedAt: now,
+            },
+          })
+        ),
+        dynamodb.send(
+          new PutCommand({
+            TableName: fastify.config.DYNAMODB_TABLE_NAME,
+            Item: {
+              ...request,
+              pk: `USER#${request.receiverId}`,
+              sk: `REQUEST#${requestId}`,
+              gsi1_pk: `RECEIVER#${request.receiverId}`,
+              gsi1_sk: `REQUEST#${requestId}`,
+              readAt: now,
+              updatedAt: now,
+            },
+          })
+        ),
+      ]);
+    } catch (error) {
+      logger.error({
+        error,
+        requestId,
+        userId,
+        msg: 'Error marking friend request as read',
+      });
+      throw error;
+    }
+  };
+
   return {
     createFriendRequest,
     getFriendRequest,
@@ -387,5 +453,6 @@ export const createFriendRepository = (fastify: FastifyInstance) => {
     createFriendship,
     getUserFriends,
     deleteFriendship,
+    markFriendRequestAsRead,
   };
 };
