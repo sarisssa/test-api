@@ -58,6 +58,7 @@ interface TestUserData {
   phoneNumber: string;
   username: string;
   experiencePoints: number;
+  avatarId: string;
   stats: {
     totalMatches: number;
     wins: number;
@@ -75,6 +76,7 @@ const testUsers: TestUserData[] = [
     phoneNumber: '+15551234001',
     username: 'RookieTrader',
     experiencePoints: 500,
+    avatarId: 'A1',
     stats: {
       totalMatches: 5,
       wins: 2,
@@ -88,6 +90,7 @@ const testUsers: TestUserData[] = [
     phoneNumber: '+15551234002',
     username: 'BronzeBull',
     experiencePoints: 1500,
+    avatarId: 'A2',
     stats: {
       totalMatches: 15,
       wins: 8,
@@ -101,6 +104,7 @@ const testUsers: TestUserData[] = [
     phoneNumber: '+15551234003',
     username: 'SilverFox',
     experiencePoints: 3000,
+    avatarId: 'A3',
     stats: {
       totalMatches: 30,
       wins: 18,
@@ -114,6 +118,7 @@ const testUsers: TestUserData[] = [
     phoneNumber: '+15551234004',
     username: 'GoldenWhale',
     experiencePoints: 8000,
+    avatarId: 'A4',
     stats: {
       totalMatches: 50,
       wins: 35,
@@ -127,6 +132,7 @@ const testUsers: TestUserData[] = [
     phoneNumber: '+15551234005',
     username: 'EliteTrader',
     experiencePoints: 20000,
+    avatarId: 'A5',
     stats: {
       totalMatches: 100,
       wins: 75,
@@ -151,6 +157,7 @@ function transformUserToDynamoDB(userData: TestUserData): SeedUserItem {
     username: userData.username,
     createdAt: now,
     lastLoggedIn: now,
+    avatarId: userData.avatarId,
     stats: {
       totalMatches: userData.stats.totalMatches,
       wins: userData.stats.wins,
