@@ -256,11 +256,77 @@ export const createChallengeRepository = (fastify: FastifyInstance) => {
     }
   };
 
+  const markChallengeAsRead = async (
+    userId: string,
+    challengeId: string
+  ): Promise<void> => {
+    const challenge = await getChallenge(challengeId);
+    if (!challenge) {
+      throw new Error('Challenge not found');
+    }
+
+    // Verify this user is the challenged user (the one receiving the notification)
+    if (challenge.challengedId !== userId) {
+      throw new Error('User is not authorized to mark this challenge as read');
+    }
+
+    const now = new Date().toISOString();
+
+    try {
+      // Update both items (challenger and challenged copies) to maintain consistency
+      await Promise.all([
+        dynamodb.send(
+          new PutCommand({
+            TableName: fastify.config.DYNAMODB_TABLE_NAME,
+            Item: {
+              ...challenge,
+              pk: `USER#${challenge.challengerId}`,
+              sk: `CHALLENGE#${challengeId}`,
+              gsi1_pk: `CHALLENGER#${challenge.challengerId}`,
+              gsi1_sk: `CHALLENGE#${challengeId}`,
+              readAt: now,
+              updatedAt: now,
+            },
+          })
+        ),
+        dynamodb.send(
+          new PutCommand({
+            TableName: fastify.config.DYNAMODB_TABLE_NAME,
+            Item: {
+              ...challenge,
+              pk: `USER#${challenge.challengedId}`,
+              sk: `CHALLENGE#${challengeId}`,
+              gsi1_pk: `CHALLENGED#${challenge.challengedId}`,
+              gsi1_sk: `CHALLENGE#${challengeId}`,
+              readAt: now,
+              updatedAt: now,
+            },
+          })
+        ),
+      ]);
+
+      logger.info({
+        challengeId,
+        userId,
+        msg: 'Challenge marked as read',
+      });
+    } catch (error) {
+      logger.error({
+        error,
+        challengeId,
+        userId,
+        msg: 'Error marking challenge as read',
+      });
+      throw error;
+    }
+  };
+
   return {
     createChallenge,
     getChallenge,
     getUserChallenges,
     updateChallengeStatus,
     deleteChallenge,
+    markChallengeAsRead,
   };
 };
