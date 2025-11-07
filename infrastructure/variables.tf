@@ -444,3 +444,15 @@ variable "bastion_instance_type" {
   type        = string
   default     = "t3.micro"
 }
+
+variable "cloudtrail_enable_cloudwatch_logs" {
+  description = "Enable CloudWatch Logs for CloudTrail (enables real-time alerting but costs more)"
+  type        = bool
+  default     = true
+}
+
+variable "sns_alert_topic_arn" {
+  description = "SNS topic ARN for CloudTrail alerts (optional)"
+  type        = string
+  default     = ""
+}

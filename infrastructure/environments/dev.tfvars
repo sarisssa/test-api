@@ -52,3 +52,7 @@ lambda_log_retention_days   = 7
 # Bastion Host Configuration
 enable_bastion              = true
 bastion_instance_type       = "t3.micro"
+
+# CloudTrail Configuration
+cloudtrail_enable_cloudwatch_logs = true  # Enable real-time monitoring (costs ~$10/month)
+# sns_alert_topic_arn             = ""    # Optional: Add SNS topic ARN for delete alerts
