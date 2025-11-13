@@ -15,3 +15,29 @@ export const REDIS_KEYS = {
   MATCH: (matchId: string) => `match:${matchId}`,
   ASSET_TICKER: (ticker: string) => `asset:ticker:${ticker.toUpperCase()}`,
 } as const;
+
+export const PREDEFINED_CHAT_MESSAGES = {
+  GG: 'GG',
+  NOOOO: 'Noooo',
+  LOG_OFF: 'Log off.',
+  COME_ON: 'Come on.',
+  LET_S_GOOO: "Let's gooo.",
+  REALLY: 'Really?',
+  TOO_EASY_NEXT: 'Too easy, next',
+  OOF: 'Oof',
+  WELL_PLAYED: 'Well played',
+  I_M_GETTING_COOKED: "I'm getting cooked.",
+  GET_ON_MY_LEVEL: 'Get on my level.',
+  NICE: 'Nice',
+  WHEW: 'Whew',
+  YOU_DON_T_MISS: "You don't miss.",
+  THAT_S_WILD: "That's wild.",
+  YOU_RE_BUILT_DIFFERENT: "You're built different.",
+  CENSORED: '!@#$%@%',
+  NO_CHANCE: 'No chance',
+  SORRY: 'Sorry!',
+} as const;
+
+export type ChatMessageId = keyof typeof PREDEFINED_CHAT_MESSAGES;
+
+export const MAX_CHAT_MESSAGES_PER_PLAYER = 5;

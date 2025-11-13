@@ -1,6 +1,14 @@
+import { ChatMessageId } from '../constants.js';
 import { PlayerAssetSelections } from '../types/match.js';
 
 //We have both Tentaive End Time and End Time since we may support user ability to surrender the match before the tentative end time.
+
+interface DynamoDBChatMessage {
+  senderId: string;
+  username: string;
+  messageId: ChatMessageId;
+  createdAt: string;
+}
 
 export interface DynamoDBMatchItem {
   pk: `MATCH#${string}`;
@@ -20,6 +28,8 @@ export interface DynamoDBMatchItem {
   // --- Match Play Phase ---
   matchStartedAt?: string;
   matchTentativeEndTime?: string;
+  chatMessages?: DynamoDBChatMessage[];
+  chatMessageCounts?: Record<string, number>;
   matchEndedAt?: string;
   matchSettlementExecutionArn?: string;
   matchCompletionBroadcastedAt?: string; // Set by BroadcastCompletion Lambda

@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import {
   INITIAL_PORTFOLIO_VALUE,
+  PREDEFINED_CHAT_MESSAGES,
   REQUIRED_ASSET_COUNT,
   TWELVE_DATA_API_BASE_URL,
 } from '../constants.js';
@@ -728,4 +729,67 @@ export const handleSetMatchDuration = async (
   });
 
   return updatedMatch;
+};
+
+export const handleChatMessage = async (
+  fastify: FastifyInstance,
+  userId: string,
+  payload: { matchId: string; messageId: string }
+): Promise<void> => {
+  const { matchId, messageId } = payload;
+
+  if (!(messageId in PREDEFINED_CHAT_MESSAGES)) {
+    throw new ValidationError(`Invalid message ID: ${messageId}`);
+  }
+
+  try {
+    const matchData = await fastify.repositories.match.getMatch(matchId);
+    const { match } = validateMatchAccess(matchData, userId);
+
+    if (match.status !== 'in_progress') {
+      throw new ValidationError(
+        'Can only send chat messages during active matches'
+      );
+    }
+
+    const user = await fastify.repositories.user.getUserById(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+    const username = user.username || 'Player';
+
+    await fastify.repositories.match.addChatMessage(
+      matchId,
+      userId,
+      username,
+      messageId
+    );
+
+    await broadcastToMatch(fastify, matchId, {
+      type: 'chat_message',
+      matchId,
+      message: {
+        senderId: userId,
+        username,
+        messageId,
+        createdAt: new Date().toISOString(),
+      },
+    });
+
+    fastify.log.info({
+      matchId,
+      userId,
+      messageId,
+      msg: 'Chat message sent successfully',
+    });
+  } catch (error) {
+    fastify.log.error({
+      error,
+      matchId,
+      userId,
+      messageId: payload.messageId,
+      msg: 'Error handling chat message',
+    });
+    throw error;
+  }
 };

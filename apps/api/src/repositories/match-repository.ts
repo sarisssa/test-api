@@ -8,7 +8,11 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
-import { MAX_ASSETS_PER_PLAYER, REDIS_KEYS } from '../constants.js';
+import {
+  MAX_ASSETS_PER_PLAYER,
+  MAX_CHAT_MESSAGES_PER_PLAYER,
+  REDIS_KEYS,
+} from '../constants.js';
 import { DynamoDBMatchItem } from '../models/match.js';
 import { PlayerAsset } from '../types/match.js';
 import { MatchResult } from '../types/matchmaking.js';
@@ -623,6 +627,77 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     }
   };
 
+  const addChatMessage = async (
+    matchId: string,
+    senderId: string,
+    username: string,
+    messageId: string
+  ): Promise<void> => {
+    const message = {
+      senderId,
+      username,
+      messageId,
+      createdAt: new Date().toISOString(),
+    };
+
+    try {
+      await dynamodb.send(
+        new UpdateCommand({
+          TableName: resolveMatchTableName(),
+          Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' },
+          UpdateExpression: `
+          SET chatMessages = list_append(if_not_exists(chatMessages, :empty), :msg),
+              chatMessageCounts.#senderId = if_not_exists(chatMessageCounts.#senderId, :zero) + :one
+        `,
+          ConditionExpression: `
+          attribute_exists(pk) AND 
+          attribute_exists(sk) AND
+          #status = :inProgress AND
+          if_not_exists(chatMessageCounts.#senderId, :zero) < :maxPerPlayer
+        `,
+          ExpressionAttributeNames: {
+            '#senderId': senderId,
+            '#status': 'status',
+          },
+          ExpressionAttributeValues: {
+            ':msg': [message],
+            ':empty': [],
+            ':zero': 0,
+            ':one': 1,
+            ':maxPerPlayer': MAX_CHAT_MESSAGES_PER_PLAYER,
+            ':inProgress': 'in_progress',
+          },
+        })
+      );
+
+      await redis.del(REDIS_KEYS.MATCH(matchId));
+
+      logger.info({
+        matchId,
+        senderId,
+        messageId,
+        msg: 'Chat message added successfully',
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.name === 'ConditionalCheckFailedException'
+      ) {
+        throw new Error(
+          'Cannot send message: limit reached or match not in progress'
+        );
+      }
+      logger.error({
+        error,
+        matchId,
+        senderId,
+        messageId,
+        msg: 'Error adding chat message',
+      });
+      throw error;
+    }
+  };
+
   const completeMatchWithOutcome = async (
     matchId: string,
     params: {
@@ -799,5 +874,6 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     completeMatchWithOutcome,
     updateMatchTentativeEndTime,
     countInProgressMatchesForUser,
+    addChatMessage,
   };
 };
