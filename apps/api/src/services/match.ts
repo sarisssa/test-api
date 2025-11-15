@@ -729,3 +729,111 @@ export const handleSetMatchDuration = async (
 
   return updatedMatch;
 };
+
+export const handlePerkDeployment = async (
+  fastify: FastifyInstance,
+  userId: string,
+  payload: {
+    matchId: string;
+    perkId: string;
+    targetPlayerId?: string;
+    targetTicker?: string;
+  }
+) => {
+  const { matchId, perkId, targetPlayerId, targetTicker } = payload;
+
+  try {
+    const matchData = await fastify.repositories.match.getMatch(matchId);
+    const { match } = validateMatchAccess(matchData, userId);
+
+    if (match.status !== 'in_progress') {
+      throw new ValidationError(
+        'Perks can only be deployed during an in-progress match'
+      );
+    }
+
+    const playerSelection = match.playerAssets[userId];
+    if (!playerSelection) {
+      throw new ValidationError('Player not found in match');
+    }
+
+    if (playerSelection.deployedPerks.length >= 3) {
+      throw new ValidationError(
+        'Maximum perk deployment limit reached (3 per match)'
+      );
+    }
+
+    const user = await fastify.repositories.user.getUserById(userId);
+    if (!user) {
+      throw new ValidationError('User not found');
+    }
+
+    const perkQuantity = user.perks?.[perkId]?.quantity ?? 0;
+    if (perkQuantity <= 0) {
+      throw new ValidationError(
+        `Insufficient perk inventory for perk: ${perkId}`
+      );
+    }
+
+    await fastify.repositories.user.decrementPerkInventory(userId, perkId);
+
+    try {
+      const deployedPerk: import('../types/match.js').DeployedPerk = {
+        perkType: perkId as import('../types/match.js').PerkType,
+        deployedAt: new Date().toISOString(),
+        targetPlayerId: targetPlayerId || userId,
+        ...(targetTicker ? { targetTicker } : {}),
+      };
+
+      await fastify.repositories.match.addDeployedPerk(
+        matchId,
+        userId,
+        deployedPerk
+      );
+
+      const updatedMatch = await fastify.repositories.match.getMatch(matchId);
+      if (!updatedMatch) {
+        throw new Error('Failed to fetch updated match after perk deployment');
+      }
+
+      await broadcastToMatch(fastify, updatedMatch.matchId, {
+        type: 'perk_deployed',
+        matchId: updatedMatch.matchId,
+        userId,
+        perkId,
+        targetPlayerId: targetPlayerId || userId,
+        targetTicker,
+        playerAssets: updatedMatch.playerAssets,
+        timestamp: Date.now(),
+      });
+
+      return {
+        type: 'perk_deployment_success',
+        matchId: updatedMatch.matchId,
+        perkId,
+      };
+    } catch (matchUpdateError) {
+      fastify.log.error({
+        error: matchUpdateError,
+        userId,
+        matchId,
+        perkId,
+        msg: 'Failed to add perk to match, attempting rollback',
+      });
+
+      throw new Error(
+        'Failed to deploy perk to match. Please contact support if inventory was consumed.'
+      );
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.name === 'ConditionalCheckFailedException') {
+        throw new ValidationError(
+          'Failed to deploy perk: match status changed or deployment limit reached'
+        );
+      }
+      throw error;
+    }
+    throw new Error('Unknown error during perk deployment');
+  }
+};

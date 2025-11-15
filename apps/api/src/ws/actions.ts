@@ -1,126 +1,181 @@
-import { z } from 'zod'
-import { FastifyInstance } from 'fastify'
+import { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 
 export type ActionContext = {
-  fastify: FastifyInstance
-  connectionId: string
-  userId: string
-}
+  fastify: FastifyInstance;
+  connectionId: string;
+  userId: string;
+};
 
 export type ActionResult = {
-  ok: boolean
-  action: string
-  [key: string]: unknown
-}
+  ok: boolean;
+  action: string;
+  [key: string]: unknown;
+};
 
-export type ActionHandler<S extends z.ZodTypeAny> = (ctx: ActionContext, payload: z.infer<S>) => Promise<ActionResult>
+export type ActionHandler<S extends z.ZodTypeAny> = (
+  ctx: ActionContext,
+  payload: z.infer<S>
+) => Promise<ActionResult>;
 
 export type RegisteredAction = {
-  schema: z.ZodTypeAny
-  handle: ActionHandler<any>
-}
+  schema: z.ZodTypeAny;
+  handle: ActionHandler<any>;
+};
 
 // Schemas
-const JoinSchema = z.object({})
-const SelectAssetSchema = z.object({ matchId: z.string().min(1), ticker: z.string().min(1) })
-const DeselectAssetSchema = SelectAssetSchema
-const ReadyCheckSchema = z.object({ matchId: z.string().min(1) })
+const JoinSchema = z.object({});
+const SelectAssetSchema = z.object({
+  matchId: z.string().min(1),
+  ticker: z.string().min(1),
+});
+const DeselectAssetSchema = SelectAssetSchema;
+const ReadyCheckSchema = z.object({ matchId: z.string().min(1) });
 
 // Handlers wired to existing services
-import { joinMatchmakingWithSession } from '../services/matchmaking.js'
 import {
   handleAssetDeselection,
   handleAssetSelection,
+  handlePerkDeployment,
   handlePlayerForfeit,
   handleReadyCheck,
   handleSetMatchDuration,
-} from '../services/match.js'
+} from '../services/match.js';
+import { joinMatchmakingWithSession } from '../services/matchmaking.js';
 
-const joinHandler: ActionHandler<typeof JoinSchema> = async ({ fastify, userId, connectionId }) => {
-  const added = await joinMatchmakingWithSession(fastify, userId, connectionId)
-  return { ok: true, action: 'join_matchmaking', playerAddedToQueue: added }
-}
+const joinHandler: ActionHandler<typeof JoinSchema> = async ({
+  fastify,
+  userId,
+  connectionId,
+}) => {
+  const added = await joinMatchmakingWithSession(fastify, userId, connectionId);
+  return { ok: true, action: 'join_matchmaking', playerAddedToQueue: added };
+};
 
-const selectAssetHandler: ActionHandler<typeof SelectAssetSchema> = async ({ fastify, userId }, payload) => {
-  await handleAssetSelection(fastify, userId, { matchId: payload.matchId, ticker: payload.ticker })
-  return { ok: true, action: 'select_asset', matchId: payload.matchId, ticker: payload.ticker }
-}
+const selectAssetHandler: ActionHandler<typeof SelectAssetSchema> = async (
+  { fastify, userId },
+  payload
+) => {
+  await handleAssetSelection(fastify, userId, {
+    matchId: payload.matchId,
+    ticker: payload.ticker,
+  });
+  return {
+    ok: true,
+    action: 'select_asset',
+    matchId: payload.matchId,
+    ticker: payload.ticker,
+  };
+};
 
-const deselectAssetHandler: ActionHandler<typeof DeselectAssetSchema> = async ({ fastify, userId }, payload) => {
-  await handleAssetDeselection(fastify, userId, { matchId: payload.matchId, ticker: payload.ticker })
-  return { ok: true, action: 'deselect_asset', matchId: payload.matchId, ticker: payload.ticker }
-}
+const deselectAssetHandler: ActionHandler<typeof DeselectAssetSchema> = async (
+  { fastify, userId },
+  payload
+) => {
+  await handleAssetDeselection(fastify, userId, {
+    matchId: payload.matchId,
+    ticker: payload.ticker,
+  });
+  return {
+    ok: true,
+    action: 'deselect_asset',
+    matchId: payload.matchId,
+    ticker: payload.ticker,
+  };
+};
 
-const readyCheckHandler: ActionHandler<typeof ReadyCheckSchema> = async ({ fastify, userId }, payload) => {
-  await handleReadyCheck(fastify, userId, { matchId: payload.matchId })
-  return { ok: true, action: 'ready_check', matchId: payload.matchId }
-}
+const readyCheckHandler: ActionHandler<typeof ReadyCheckSchema> = async (
+  { fastify, userId },
+  payload
+) => {
+  await handleReadyCheck(fastify, userId, { matchId: payload.matchId });
+  return { ok: true, action: 'ready_check', matchId: payload.matchId };
+};
 
 // Scaffolds for upcoming actions
 const SetMatchDurationSchema = z.object({
   matchId: z.string().min(1),
   durationSeconds: z.number().int().positive().max(3_600),
-})
-const SelectPerkSchema = z.object({ matchId: z.string().min(1), perkId: z.string().min(1) })
-const ForfeitMatchSchema = z.object({ matchId: z.string().min(1) })
+});
+const DeployPerkSchema = z.object({
+  matchId: z.string().min(1),
+  perkId: z.string().min(1),
+  targetPlayerId: z.string().optional(),
+  targetTicker: z.string().optional(),
+});
+const ForfeitMatchSchema = z.object({ matchId: z.string().min(1) });
 
-const notImplemented = (name: string): ActionHandler<z.ZodTypeAny> => async () => ({ ok: false, action: name, error: 'not_implemented' })
+const notImplemented =
+  (name: string): ActionHandler<z.ZodTypeAny> =>
+  async () => ({ ok: false, action: name, error: 'not_implemented' });
 
-const setMatchDurationHandler: ActionHandler<typeof SetMatchDurationSchema> = async (
-  { fastify, userId },
-  payload
-) => {
-  const updatedMatch = await handleSetMatchDuration(fastify, userId, payload)
+const setMatchDurationHandler: ActionHandler<
+  typeof SetMatchDurationSchema
+> = async ({ fastify, userId }, payload) => {
+  const updatedMatch = await handleSetMatchDuration(fastify, userId, payload);
   return {
     ok: true,
     action: 'set_match_duration',
     matchId: updatedMatch.matchId,
     matchTentativeEndTime: updatedMatch.matchTentativeEndTime,
-  }
-}
+  };
+};
+
+const deployPerkHandler: ActionHandler<typeof DeployPerkSchema> = async (
+  { fastify, userId },
+  payload
+) => {
+  await handlePerkDeployment(fastify, userId, payload);
+  return {
+    ok: true,
+    action: 'deploy_perk',
+    matchId: payload.matchId,
+    perkId: payload.perkId,
+  };
+};
 
 const forfeitMatchHandler: ActionHandler<typeof ForfeitMatchSchema> = async (
   { fastify, userId },
   payload
 ) => {
-  await handlePlayerForfeit(fastify, userId, payload)
-  return { ok: true, action: 'forfeit_match', matchId: payload.matchId }
-}
+  await handlePlayerForfeit(fastify, userId, payload);
+  return { ok: true, action: 'forfeit_match', matchId: payload.matchId };
+};
 
 export const actions: Record<string, RegisteredAction> = {
   join_matchmaking: { schema: JoinSchema, handle: joinHandler },
   select_asset: { schema: SelectAssetSchema, handle: selectAssetHandler },
   deselect_asset: { schema: DeselectAssetSchema, handle: deselectAssetHandler },
   ready_check: { schema: ReadyCheckSchema, handle: readyCheckHandler },
-  set_match_duration: { schema: SetMatchDurationSchema, handle: setMatchDurationHandler },
-  select_perk: { schema: SelectPerkSchema, handle: notImplemented('select_perk') },
+  set_match_duration: {
+    schema: SetMatchDurationSchema,
+    handle: setMatchDurationHandler,
+  },
+  deploy_perk: { schema: DeployPerkSchema, handle: deployPerkHandler },
   forfeit_match: { schema: ForfeitMatchSchema, handle: forfeitMatchHandler },
-}
+};
 
-export const parseAndHandle = async (
-  ctx: ActionContext,
-  message: unknown
-) => {
-  const fastify = ctx.fastify
+export const parseAndHandle = async (ctx: ActionContext, message: unknown) => {
+  const fastify = ctx.fastify;
   if (!message || typeof message !== 'object') {
-    return { ok: false, error: 'invalid_message' }
+    return { ok: false, error: 'invalid_message' };
   }
 
-  const { action, payload } = message as { action?: string; payload?: unknown }
+  const { action, payload } = message as { action?: string; payload?: unknown };
   if (!action) {
-    return { ok: false, error: 'missing_action' }
+    return { ok: false, error: 'missing_action' };
   }
 
-  const entry = actions[action]
+  const entry = actions[action];
   if (!entry) {
-    return { ok: false, error: 'unknown_action', action }
+    return { ok: false, error: 'unknown_action', action };
   }
 
   try {
-    const parsed = entry.schema.parse(payload ?? {})
-    return await entry.handle(ctx, parsed)
+    const parsed = entry.schema.parse(payload ?? {});
+    return await entry.handle(ctx, parsed);
   } catch (err) {
-    fastify.log.warn({ err, action }, 'WS action validation failed')
-    return { ok: false, error: 'invalid_payload', action }
+    fastify.log.warn({ err, action }, 'WS action validation failed');
+    return { ok: false, error: 'invalid_payload', action };
   }
-}
+};

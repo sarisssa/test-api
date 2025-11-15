@@ -60,9 +60,20 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
       });
 
       const playerAssets = players.reduce<
-        Record<string, { assets: PlayerAsset[] }>
+        Record<
+          string,
+          {
+            assets: PlayerAsset[];
+            deployedPerks: import('../types/match.js').DeployedPerk[];
+            performanceModifierPercent: number;
+          }
+        >
       >((acc, playerId) => {
-        acc[playerId] = { assets: [] };
+        acc[playerId] = {
+          assets: [],
+          deployedPerks: [],
+          performanceModifierPercent: 0,
+        };
         return acc;
       }, {});
 
@@ -787,6 +798,52 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     }
   };
 
+  const addDeployedPerk = async (
+    matchId: string,
+    userId: string,
+    deployedPerk: import('../types/match.js').DeployedPerk
+  ): Promise<void> => {
+    try {
+      await dynamodb.send(
+        new UpdateCommand({
+          TableName: resolveMatchTableName(),
+          Key: { pk: `MATCH#${matchId}`, sk: 'DETAILS' },
+          ConditionExpression:
+            'attribute_exists(pk) AND attribute_exists(sk) AND #status = :inProgress AND size(playerAssets.#userId.deployedPerks) < :maxPerks',
+          UpdateExpression:
+            'SET playerAssets.#userId.deployedPerks = list_append(playerAssets.#userId.deployedPerks, :newPerk)',
+          ExpressionAttributeNames: {
+            '#userId': userId,
+            '#status': 'status',
+          },
+          ExpressionAttributeValues: {
+            ':inProgress': 'in_progress',
+            ':maxPerks': 3,
+            ':newPerk': [deployedPerk],
+          },
+        })
+      );
+
+      await redis.del(REDIS_KEYS.MATCH(matchId));
+      logger.info({
+        matchId,
+        userId,
+        perkType: deployedPerk.perkType,
+        msg: 'Deployed perk added to match',
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.name === 'ConditionalCheckFailedException'
+      ) {
+        throw new Error(
+          'Cannot deploy perk: match status invalid or max perks reached'
+        );
+      }
+      throw error;
+    }
+  };
+
   return {
     getMatch,
     persistNewMatch,
@@ -799,5 +856,6 @@ export const createMatchRepository = (fastify: FastifyInstance) => {
     completeMatchWithOutcome,
     updateMatchTentativeEndTime,
     countInProgressMatchesForUser,
+    addDeployedPerk,
   };
 };

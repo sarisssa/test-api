@@ -545,6 +545,58 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     }
   };
 
+  const decrementPerkInventory = async (
+    userId: string,
+    perkId: string
+  ): Promise<void> => {
+    try {
+      const user = await getUserById(userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      const currentQuantity = user.perks?.[perkId]?.quantity ?? 0;
+      if (currentQuantity <= 0) {
+        throw new Error(`Insufficient perk inventory for perkId: ${perkId}`);
+      }
+
+      await dynamodb.send(
+        new UpdateCommand({
+          TableName: fastify.config.DYNAMODB_TABLE_NAME,
+          Key: {
+            pk: user.pk,
+            sk: user.sk,
+          },
+          UpdateExpression:
+            'SET perks.#perkId.quantity = perks.#perkId.quantity - :dec',
+          ConditionExpression:
+            'attribute_exists(perks.#perkId) AND perks.#perkId.quantity >= :min',
+          ExpressionAttributeNames: {
+            '#perkId': perkId,
+          },
+          ExpressionAttributeValues: {
+            ':dec': 1,
+            ':min': 1,
+          },
+        })
+      );
+
+      logger.info({
+        userId,
+        perkId,
+        msg: 'Perk inventory decremented successfully',
+      });
+    } catch (error) {
+      logger.error({
+        userId,
+        perkId,
+        error,
+        msg: 'Error decrementing perk inventory',
+      });
+      throw error;
+    }
+  };
+
   return {
     fetchUserByPhone,
     getUserById,
@@ -556,5 +608,6 @@ export const createUserRepository = (fastify: FastifyInstance) => {
     getUserMatches,
     updateProfilePicture,
     updateUserPerksAndCurrency,
+    decrementPerkInventory,
   };
 };
