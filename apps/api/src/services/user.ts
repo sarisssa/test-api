@@ -160,16 +160,21 @@ export const updateAvatarId = async (
 
 export interface EnrichedPlayerMatch extends DynamoDBPlayerMatchItem {
   opponentProfilePictureUrl?: string | null;
+  opponentAvatarId: string;
 }
 
 export const getUserMatchHistory = async (
   fastify: FastifyInstance,
-  userId: string
+  userId: string,
+  limit?: number
 ): Promise<EnrichedPlayerMatch[]> => {
   try {
-    const matches = await fastify.repositories.user.getUserMatches(userId);
+    const matches = await fastify.repositories.user.getUserMatches(
+      userId,
+      limit
+    );
 
-    // Enrich matches with opponent profile picture (username is already stored in PlayerMatchItem)
+    // Enrich matches with opponent profile picture and avatar ID (username is already stored in PlayerMatchItem)
     const enrichedMatches = await Promise.all(
       matches.map(async match => {
         try {
@@ -179,15 +184,19 @@ export const getUserMatchHistory = async (
           return {
             ...match,
             opponentProfilePictureUrl: opponent?.profilePictureUrl,
+            opponentAvatarId: opponent?.avatarId || 'A1', // Fallback to A1 if not set
           };
         } catch (error) {
           fastify.log.warn({
             matchId: match.id,
             opponentId: match.opponentId,
             error,
-            msg: 'Failed to fetch opponent profile picture for match',
+            msg: 'Failed to fetch opponent profile data for match',
           });
-          return match;
+          return {
+            ...match,
+            opponentAvatarId: 'A1', // Fallback on error
+          };
         }
       })
     );

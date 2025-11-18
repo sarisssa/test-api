@@ -51,6 +51,22 @@ export interface UserPublicProfile {
       quantity: number;
     };
   };
+  recentMatches?: Array<{
+    id: string;
+    opponentId: string;
+    opponentUsername: string;
+    opponentProfilePictureUrl?: string | null;
+    opponentAvatarId: string;
+    result: 'win' | 'loss' | 'pending';
+    wagerAmount: number;
+    duration: number;
+    category: 'stock' | 'crypto' | 'commodities';
+    createdAt: string;
+    tentativeEndTime: string;
+    endedAt?: string;
+    performancePercentage: number;
+    opponentPerformancePercentage: number;
+  }>;
   createdAt: string;
   lastLoggedIn?: string;
 }

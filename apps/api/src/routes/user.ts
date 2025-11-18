@@ -59,6 +59,8 @@ import {
   userProfileResponseSchema,
 } from '../types/user.js';
 
+const DEFAULT_RECENT_MATCHES_LIMIT = 5;
+
 export default async function userRoutes(fastify: FastifyInstance) {
   fastify.get<{
     Headers: { authorization: string };
@@ -98,7 +100,16 @@ export default async function userRoutes(fastify: FastifyInstance) {
           });
         }
 
-        const response = userProfile;
+        const recentMatches = await getUserMatchHistory(
+          fastify,
+          request.user.userId,
+          DEFAULT_RECENT_MATCHES_LIMIT
+        );
+
+        const response = {
+          ...userProfile,
+          recentMatches,
+        };
 
         return reply.send(response);
       } catch (error) {

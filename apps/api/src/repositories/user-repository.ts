@@ -366,7 +366,8 @@ export const createUserRepository = (fastify: FastifyInstance) => {
   };
 
   const getUserMatches = async (
-    userId: string
+    userId: string,
+    limit?: number
   ): Promise<DynamoDBPlayerMatchItem[]> => {
     try {
       const user = await getUserById(userId);
@@ -387,20 +388,25 @@ export const createUserRepository = (fastify: FastifyInstance) => {
         }
 
         try {
-          const result = await dynamodb.send(
-            new QueryCommand({
-              TableName: tableName,
-              KeyConditionExpression: `#pk = :pk AND begins_with(#sk, :skPrefix)`,
-              ExpressionAttributeNames: {
-                '#pk': pkAttr,
-                '#sk': skAttr,
-              },
-              ExpressionAttributeValues: {
-                ':pk': pkValue,
-                ':skPrefix': 'MATCH#',
-              },
-            })
-          );
+          const queryParams: any = {
+            TableName: tableName,
+            KeyConditionExpression: `#pk = :pk AND begins_with(#sk, :skPrefix)`,
+            ExpressionAttributeNames: {
+              '#pk': pkAttr,
+              '#sk': skAttr,
+            },
+            ExpressionAttributeValues: {
+              ':pk': pkValue,
+              ':skPrefix': 'MATCH#',
+            },
+            ScanIndexForward: false, // Sort in descending order (most recent first)
+          };
+
+          if (limit !== undefined) {
+            queryParams.Limit = limit;
+          }
+
+          const result = await dynamodb.send(new QueryCommand(queryParams));
 
           return (result.Items || []) as DynamoDBPlayerMatchItem[];
         } catch (queryError) {

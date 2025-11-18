@@ -729,3 +729,149 @@ export const handleSetMatchDuration = async (
 
   return updatedMatch;
 };
+
+export interface MatchSummaryPlayer {
+  userId: string;
+  username: string;
+  avatarId: string;
+  profilePictureUrl: string | null;
+  assets: Array<{
+    ticker: string;
+    name: string;
+    assetType: string;
+    initialPrice: number;
+    currentPrice: number | null;
+    endPrice: number | null;
+    shares: number;
+    lastUpdatedAt: string | null;
+  }>;
+}
+
+export interface MatchSummary {
+  matchId: string;
+  status: 'asset_selection' | 'in_progress' | 'completed' | 'cancelled';
+  createdAt: string;
+  matchStartedAt: string | null;
+  matchEndedAt: string | null;
+  duration: number;
+  wagerAmount: number;
+  category: 'stock' | 'crypto' | 'commodities';
+  winner: MatchSummaryPlayer | null;
+  loser: MatchSummaryPlayer | null;
+  completionReason: 'time_expired' | 'forfeited' | 'manual' | null;
+  currentUserResult: 'win' | 'loss' | 'pending';
+  players: Record<string, MatchSummaryPlayer>;
+}
+
+export const getMatchSummary = async (
+  fastify: FastifyInstance,
+  matchId: string,
+  userId: string
+): Promise<MatchSummary> => {
+  // Fetch the main match record
+  const match = await fastify.repositories.match.getMatch(matchId);
+
+  if (!match) {
+    throw new Error('Match not found');
+  }
+
+  if (!match.players.includes(userId)) {
+    throw new Error('Access denied to this match');
+  }
+
+  // Fetch PlayerMatch records for both players to get wager amount, category, and duration
+  const playerMatchRecordsMap = new Map();
+  for (const playerId of match.players) {
+    try {
+      const matches = await fastify.repositories.user.getUserMatches(playerId);
+      // Find the specific match
+      const playerMatch = matches.find(m => m.id === matchId);
+      if (playerMatch) {
+        playerMatchRecordsMap.set(playerId, playerMatch);
+      }
+    } catch (error) {
+      fastify.log.warn({
+        playerId,
+        matchId,
+        error,
+        msg: 'Failed to fetch PlayerMatch record',
+      });
+    }
+  }
+
+  // Use the current user's PlayerMatch record for wager/category/duration
+  const currentUserPlayerMatch = playerMatchRecordsMap.get(userId);
+
+  // Determine current user's result
+  let currentUserResult: 'win' | 'loss' | 'pending' = 'pending';
+  if (match.status === 'completed' && match.winner && match.loser) {
+    currentUserResult = match.winner === userId ? 'win' : 'loss';
+  }
+
+  // Enrich player data with user profiles
+  const enrichedPlayers: Record<string, MatchSummaryPlayer> = {};
+  for (const [playerId, playerData] of Object.entries(match.playerAssets)) {
+    try {
+      const userProfile = await fastify.repositories.user.getUserById(playerId);
+
+      enrichedPlayers[playerId] = {
+        userId: playerId,
+        username: userProfile?.username || 'Unknown',
+        avatarId: userProfile?.avatarId || 'A1',
+        profilePictureUrl: userProfile?.profilePictureUrl || null,
+        assets: playerData.assets.map(asset => ({
+          ticker: asset.ticker,
+          name: asset.name,
+          assetType: asset.assetType,
+          initialPrice: asset.initialPrice,
+          currentPrice: asset.currentPrice ?? null,
+          endPrice: asset.endPrice ?? null,
+          shares: asset.shares,
+          lastUpdatedAt: asset.lastUpdatedAt ?? null,
+        })),
+      };
+    } catch (error) {
+      fastify.log.warn({
+        playerId,
+        error,
+        msg: 'Failed to enrich player data',
+      });
+      enrichedPlayers[playerId] = {
+        userId: playerId,
+        username: 'Unknown',
+        avatarId: 'A1',
+        profilePictureUrl: null,
+        assets: playerData.assets.map(asset => ({
+          ticker: asset.ticker,
+          name: asset.name,
+          assetType: asset.assetType,
+          initialPrice: asset.initialPrice,
+          currentPrice: asset.currentPrice ?? null,
+          endPrice: asset.endPrice ?? null,
+          shares: asset.shares,
+          lastUpdatedAt: asset.lastUpdatedAt ?? null,
+        })),
+      };
+    }
+  }
+
+  // Build winner and loser objects
+  const winner = match.winner ? enrichedPlayers[match.winner] : null;
+  const loser = match.loser ? enrichedPlayers[match.loser] : null;
+
+  return {
+    matchId: match.matchId,
+    status: match.status,
+    createdAt: match.createdAt,
+    matchStartedAt: match.matchStartedAt ?? null,
+    matchEndedAt: match.matchEndedAt ?? null,
+    duration: currentUserPlayerMatch?.duration ?? 0,
+    wagerAmount: currentUserPlayerMatch?.wagerAmount ?? 0,
+    category: currentUserPlayerMatch?.category ?? 'stock',
+    winner,
+    loser,
+    completionReason: match.completionReason ?? null,
+    currentUserResult,
+    players: enrichedPlayers,
+  };
+};
